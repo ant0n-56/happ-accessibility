@@ -55,7 +55,7 @@ class InterfaceSettingLabel(SettingsRowLabel):
         return native_name
 
 
-class ContextLabel(UIA):
+class ContextLabel(SettingsRowLabel):
     def _get_name(self):
         native_name = super()._get_name()
         if native_name:
@@ -244,7 +244,7 @@ class AppModule(appModuleHandler.AppModule):
             return
         try:
             kind = qml_type(obj.UIAElement.currentClassName)
-            if kind == "Switch":
+            if kind in ("Switch", "SpinBox"):
                 clsList.insert(0, SettingsRowLabel)
                 return
             if kind == "ComboBox" and obj.role == Role.COMBOBOX:

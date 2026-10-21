@@ -51,6 +51,7 @@ class SettingReaderTests(unittest.TestCase):
         spec = importlib.util.spec_from_file_location("setting_test.settings", root / "settings.py")
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
+        self.module = module
         self.owner = SimpleNamespace(_terminated=False, processID=42)
         self.reader = module.SettingReader(self.owner, self.obj)
         self.result = SimpleNamespace(data=[[dict(text="Включить фрагментацию", x=20, y=20, width=250, height=30)]])
@@ -101,6 +102,22 @@ class SettingReaderTests(unittest.TestCase):
 
     def test_occluded_control_is_not_captured(self):
         self.hit = SimpleNamespace(processID=77)
+        self.reader.start()
+        self.capture.assert_not_called()
+
+    def test_combobox_child_hit_is_accepted(self):
+        self.hit = SimpleNamespace(processID=42, parent=self.obj)
+        self.reader.start()
+        self.recognizer.recognize.assert_called_once()
+
+    def test_overlapping_sibling_is_not_accepted(self):
+        self.hit = SimpleNamespace(processID=42, parent=SimpleNamespace(processID=42, parent=None))
+        self.reader.start()
+        self.capture.assert_not_called()
+
+    def test_cyclic_provider_is_bounded(self):
+        self.hit = SimpleNamespace(processID=42)
+        self.hit.parent = self.hit
         self.reader.start()
         self.capture.assert_not_called()
 

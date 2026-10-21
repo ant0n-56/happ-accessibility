@@ -15,6 +15,18 @@ from winAPI.sessionTracking import isLockScreenModeActive
 from .context import setting_row_label
 
 
+def belongs_to_control(hit, control):
+    for depth in range(4):
+        if hit is None:
+            return False
+        if hit == control:
+            return True
+        if hit.processID != control.processID:
+            return False
+        hit = hit.parent
+    return False
+
+
 class SettingReader:
     def __init__(self, owner, obj):
         self.owner = owner
@@ -65,7 +77,8 @@ class SettingReader:
                     or rect.left + rect.width > window.left + window.width
                     or top + height > window.top + window.height):
                 return
-            if NVDAObject.objectFromPoint(rect.left + rect.width // 2, top + height // 2) != self.obj:
+            if not belongs_to_control(
+                    NVDAObject.objectFromPoint(rect.left + rect.width // 2, top + height // 2), self.obj):
                 return
             for offset in (1, width // 2, width - 1):
                 hit = NVDAObject.objectFromPoint(left + offset, top + height // 2)

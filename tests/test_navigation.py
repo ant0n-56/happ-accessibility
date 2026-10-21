@@ -73,6 +73,25 @@ class NavigationTests(unittest.TestCase):
         self.app.processID = 42
         self.hit = self.button
 
+    def test_setting_editor_and_spinbox_receive_label_overlay(self):
+        for kind, role in (("TextField_QMLTYPE_9", 8), ("SpinBox_QMLTYPE_10", 8), ("Switch_QMLTYPE_11", 9)):
+            with self.subTest(kind=kind):
+                obj = Node(kind)
+                obj.role = role
+                classes = []
+                self.app.chooseNVDAObjectOverlayClasses(obj, classes)
+                self.assertEqual(len(classes), 1)
+                self.assertTrue(any(base.__name__ == "SettingsRowLabel" for base in classes[0].__mro__))
+
+    def test_focus_event_preserves_chain_and_cancels_reader(self):
+        from unittest.mock import Mock
+        reader = self.app._settingReader = Mock()
+        next_handler = Mock()
+        self.app.event_gainFocus(Node("Unrelated"), next_handler)
+        next_handler.assert_called_once_with()
+        reader.cancel.assert_called_once_with()
+        self.assertIsNone(self.app._settingReader)
+
     def move_cursor(self, *point):
         self.cursor = point
 
