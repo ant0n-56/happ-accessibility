@@ -230,6 +230,26 @@ class SettingReaderTests(unittest.TestCase):
         self.reader.start()
         self.capture.assert_called_once_with(100, 80, 260, 140)
 
+    def test_wide_window_reads_bounded_label_area(self):
+        self.foreground.location = self.foreground.location._replace(width=1920)
+        self.obj.parent.location = self.obj.parent.location._replace(width=1780)
+        self.obj.location = self.obj.location._replace(left=1750)
+        self.reader = self.module.SettingReader(self.owner, self.obj)
+        self.reader.start()
+        self.capture.assert_called_once_with(100, 80, 1200, 140)
+        self.reader.finish(self.result)
+        self.assertEqual(self.messages, ["Включить фрагментацию: Выкл"])
+
+    def test_wide_window_rejects_text_crossing_capture_boundary(self):
+        self.foreground.location = self.foreground.location._replace(width=1920)
+        self.obj.parent.location = self.obj.parent.location._replace(width=1780)
+        self.obj.location = self.obj.location._replace(left=1750)
+        self.reader = self.module.SettingReader(self.owner, self.obj)
+        self.reader.start()
+        self.result.data[0][0].update(x=2300, width=200)
+        self.reader.finish(self.result)
+        self.assertEqual(self.messages, [])
+
     def test_hidden_sibling_detection_is_not_generic_occlusion(self):
         pane = SimpleNamespace(UIAElement=SimpleNamespace(currentClassName="SettingsPane"), processID=42, parent=None)
         self.obj.parent = pane

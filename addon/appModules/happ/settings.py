@@ -124,7 +124,7 @@ class SettingReader:
                 left = max(left, min(area.left for area in panes))
                 if rect.top + rect.height > bottom or rect.top - top > 2 * rect.height:
                     return
-            width, height = right - left, bottom - top
+            width, height = min(right - left, 1200), bottom - top
             if not 20 <= width <= 1200 or not 12 <= height <= 1200:
                 return
             if not belongs_to_control(
