@@ -78,6 +78,20 @@ class SettingsGroups(PanelMenu):
             log.debugWarning("Happ settings groups unavailable", exc_info=True)
             ui.message("Не удалось прочитать группы настроек")
 
+    def restore(self):
+        self.actionTimer = None
+        try:
+            if not self.safe() or api.getForegroundObject() != self.foreground:
+                self.cancel()
+                return
+            self.viewportRect = self.viewport.location
+            self.rectangles = [pane.location for pane in self.panes]
+            self.capture()
+        except (COMError, RuntimeError):
+            self.cancel()
+            log.debugWarning("Happ settings layout unavailable after dialog", exc_info=True)
+            ui.message("Не удалось проверить расположение группы")
+
     def expire(self):
         announce = self.safe() and api.getForegroundObject() == self.foreground
         self.cancel()
@@ -99,10 +113,12 @@ class SettingsGroups(PanelMenu):
             entries = match_groups(result.data, self.info, self.rectangles, self.viewportRect)
             entries = [entry for entry in entries if self.hit(entry)]
             if self.selection is not None:
-                if self.selection not in entries:
+                matching = [entry for entry in entries if entry[:2] == self.selection[:2]]
+                if len(matching) != 1:
                     self.cancel()
                     ui.message("Группа изменилась. Нажатие отменено")
                     return
+                self.selection = matching[0]
                 self.click()
                 return
             if not entries:
@@ -130,7 +146,7 @@ class SettingsGroups(PanelMenu):
                 return
             self.selection = selected
             self.foreground.setFocus()
-            self.actionTimer = core.callLater(200, self.capture)
+            self.actionTimer = core.callLater(200, self.restore)
         except (COMError, RuntimeError):
             self.cancel()
             log.debugWarning("Happ settings group changed", exc_info=True)

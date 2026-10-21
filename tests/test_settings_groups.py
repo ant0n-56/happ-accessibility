@@ -113,12 +113,35 @@ class SettingsGroupsTests(unittest.TestCase):
         self.assertEqual(self.events, [])
         self.assertTrue(self.menu.cancelled)
 
-    def test_repeated_recognition_must_match_full_entry(self):
+    def test_repeated_recognition_uses_new_verified_bounds(self):
         changed = (0, "Подписки", (30, 41, 100, 61))
         with patch.object(self.module, "match_groups", return_value=[changed]):
             self.menu.info = object()
             self.menu.show(SimpleNamespace(data=[]))
+        self.assertEqual(self.events, [(2, 0, 0), (4, 0, 0)])
+        self.assertEqual(self.menu.selection, changed)
+
+    def test_repeated_recognition_must_match_same_group(self):
+        changed = (0, "Пинг", (30, 40, 100, 60))
+        with patch.object(self.module, "match_groups", return_value=[changed]):
+            self.menu.info = object()
+            self.menu.show(SimpleNamespace(data=[]))
         self.assertEqual(self.events, [])
+
+    def test_restore_refreshes_layout_before_recognition(self):
+        self.viewport.location = SimpleNamespace(left=10, top=20, width=800, height=600)
+        self.pane.location = (20, 30, 600, 200)
+        with patch.object(self.menu, "capture") as capture:
+            self.menu.restore()
+            capture.assert_called_once_with()
+        self.assertEqual(self.menu.viewportRect, self.viewport.location)
+        self.assertEqual(self.menu.rectangles, [self.pane.location])
+
+    def test_restore_in_another_window_does_not_recognize(self):
+        self.foreground = object()
+        with patch.object(self.menu, "capture") as capture:
+            self.menu.restore()
+            capture.assert_not_called()
 
     def test_matching_recognition_permits_click(self):
         with patch.object(self.module, "match_groups", return_value=[self.menu.selection]):
