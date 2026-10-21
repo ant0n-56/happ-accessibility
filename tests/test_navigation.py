@@ -70,8 +70,86 @@ class NavigationTests(unittest.TestCase):
         self.addCleanup(lambda: sys.modules.pop(spec.name, None))
         spec.loader.exec_module(module)
         self.app = module.AppModule()
+        self.module = module
         self.app.processID = 42
         self.hit = self.button
+
+    def setting(self):
+        obj = self.module.ContextLabel("TextField")
+        obj.parent = Node("SettingsPane")
+        obj.name = None
+        obj.UIAElement.currentName = ""
+        self.api.getFocusObject = lambda: obj
+        return obj
+
+    def test_empty_native_name_does_not_skip_editor_recognition(self):
+        from unittest.mock import Mock
+        obj = self.setting()
+        reader = Mock()
+        factory = Mock(return_value=reader)
+        with patch.dict(sys.modules, {"happ_test_module.settings": types.SimpleNamespace(SettingReader=factory)}):
+            self.app.event_gainFocus(obj, Mock())
+        factory.assert_called_once_with(self.app, obj)
+
+    def test_tab_skips_confirmed_hidden_setting_without_speech(self):
+        from unittest.mock import Mock
+        obj = self.setting()
+        gesture = Mock()
+        self.app.script_settingsTab(gesture)
+        handler = Mock()
+        with patch.dict(sys.modules, {"happ_test_module.settings": types.SimpleNamespace(is_covered_setting=lambda *args: True)}):
+            self.app.event_gainFocus(obj, handler)
+        handler.assert_not_called()
+        self.timers[-1].run()
+        self.assertEqual(gesture.send.call_count, 2)
+
+    def test_pending_tab_does_not_follow_user_to_another_window(self):
+        from unittest.mock import Mock
+        obj = self.setting()
+        gesture = Mock()
+        self.app.script_settingsTab(gesture)
+        with patch.dict(sys.modules, {"happ_test_module.settings": types.SimpleNamespace(is_covered_setting=lambda *args: True)}):
+            self.app.event_gainFocus(obj, Mock())
+        self.root = Node("OtherWindow", process=99)
+        self.timers[-1].run()
+        self.assertEqual(gesture.send.call_count, 1)
+
+    def test_tab_passes_through_outside_settings(self):
+        from unittest.mock import Mock
+        self.api.getFocusObject = lambda: self.button
+        gesture = Mock()
+        self.app.script_settingsTab(gesture)
+        gesture.send.assert_called_once_with()
+        self.assertIsNone(self.app._settingsTab)
+
+    def test_expired_tab_never_sends_another_key(self):
+        from unittest.mock import Mock
+        obj = self.setting()
+        gesture = Mock()
+        self.app._settingsTab = (gesture, self.root, 0, 24)
+        self.assertFalse(self.app._continueSettingsTab(obj))
+        gesture.send.assert_not_called()
+
+    def test_tab_skip_limit_is_enforced(self):
+        from unittest.mock import Mock
+        obj = self.setting()
+        gesture = Mock()
+        self.app.script_settingsTab(gesture)
+        first, foreground, deadline, remaining = self.app._settingsTab
+        self.app._settingsTab = (first, foreground, deadline, 0)
+        self.assertFalse(self.app._continueSettingsTab(obj))
+        self.assertEqual(gesture.send.call_count, 1)
+
+    def test_new_tab_stops_previous_continuation(self):
+        from unittest.mock import Mock
+        obj = self.setting()
+        gesture = Mock()
+        self.app.script_settingsTab(gesture)
+        with patch.dict(sys.modules, {"happ_test_module.settings": types.SimpleNamespace(is_covered_setting=lambda *args: True)}):
+            self.app.event_gainFocus(obj, Mock())
+        timer = self.timers[-1]
+        self.app.script_settingsTab(gesture)
+        self.assertTrue(timer.stopped)
 
     def test_setting_editor_and_spinbox_receive_label_overlay(self):
         for kind, role in (("TextField_QMLTYPE_9", 8), ("SpinBox_QMLTYPE_10", 8), ("Switch_QMLTYPE_11", 9)):

@@ -16,8 +16,8 @@ class SettingReaderTests(unittest.TestCase):
         self.context = context
         rect = namedtuple("Rect", "left top width height")
         self.obj = SimpleNamespace(location=rect(400, 100, 95, 35), processID=42, states=set(),
-                                   parent=SimpleNamespace(location=rect(100, 80, 420, 140)),
-                                   UIAElement=SimpleNamespace(currentName="Выкл"))
+                                   parent=SimpleNamespace(location=rect(100, 80, 420, 140), firstChild=None),
+                                   UIAElement=SimpleNamespace(currentName="Выкл", currentClassName="TextField"))
         self.focus = self.obj
         self.foreground = SimpleNamespace(location=rect(0, 0, 800, 600), processID=42)
         self.locked = False
@@ -37,7 +37,11 @@ class SettingReaderTests(unittest.TestCase):
             "wx": SimpleNamespace(CallAfter=lambda callback, *args: self.pending.append((callback, args))),
             "comtypes": SimpleNamespace(COMError=type("COMError", (Exception,), {})),
             "contentRecog": SimpleNamespace(RecogImageInfo=lambda left, top, width, height, scale:
-                                            SimpleNamespace(recogWidth=width * scale, recogHeight=height * scale)),
+                                            SimpleNamespace(recogWidth=width * scale, recogHeight=height * scale,
+                                                            convertXToScreen=lambda value: left + value / scale,
+                                                            convertYToScreen=lambda value: top + value / scale,
+                                                            convertWidthToScreen=lambda value: value / scale,
+                                                            convertHeightToScreen=lambda value: value / scale)),
             "contentRecog.uwpOcr": SimpleNamespace(UwpOcr=lambda language: self.recognizer, getLanguages=lambda: ["ru-RU"]),
             "controlTypes": SimpleNamespace(State=SimpleNamespace(INVISIBLE=1, OFFSCREEN=2, UNAVAILABLE=3)),
             "logHandler": SimpleNamespace(log=Mock()),
@@ -54,7 +58,7 @@ class SettingReaderTests(unittest.TestCase):
         self.module = module
         self.owner = SimpleNamespace(_terminated=False, processID=42)
         self.reader = module.SettingReader(self.owner, self.obj)
-        self.result = SimpleNamespace(data=[[dict(text="Включить фрагментацию", x=20, y=20, width=250, height=30)]])
+        self.result = SimpleNamespace(data=[[dict(text="Включить фрагментацию", x=20, y=60, width=250, height=30)]])
 
     def test_reads_row_without_changing_value(self):
         self.reader.start()
@@ -151,16 +155,45 @@ class SettingReaderTests(unittest.TestCase):
         self.capture.assert_not_called()
 
     def test_ambiguous_lines_are_rejected(self):
-        self.assertIsNone(self.context.setting_row_label(self.result.data * 2, 600, 70))
-        self.assertIsNone(self.context.setting_row_label([], 600, 70))
+        self.reader.start()
+        self.assertIsNone(self.context.setting_label_from_pane(self.result.data * 2, self.reader.info, self.obj.location))
+        self.assertIsNone(self.context.setting_label_from_pane([], self.reader.info, self.obj.location))
 
     def test_clipped_and_neighboring_text_are_rejected(self):
-        for change in ({"x": -1}, {"width": 800}, {"y": 60}, {"height": 0}, {"y": 0, "height": 5}):
+        self.reader.start()
+        for change in ({"x": -1}, {"width": 800}, {"y": 260}, {"height": 0}, {"y": 0, "height": 5}):
             with self.subTest(change=change):
                 word = dict(self.result.data[0][0], **change)
-                self.assertIsNone(self.context.setting_row_label([[word]], 600, 70))
+                self.assertIsNone(self.context.setting_label_from_pane([[word]], self.reader.info, self.obj.location))
 
     def test_reading_order_and_colon(self):
-        words = [dict(text="IP:", x=100, y=20, width=40, height=30),
-                 dict(text="Тип", x=10, y=20, width=60, height=30)]
-        self.assertEqual(self.context.setting_row_label([words], 600, 70), "Тип IP")
+        self.reader.start()
+        words = [dict(text="IP:", x=100, y=60, width=40, height=30),
+                 dict(text="Тип", x=10, y=60, width=60, height=30)]
+        self.assertEqual(self.context.setting_label_from_pane([words], self.reader.info, self.obj.location), "Тип IP")
+
+    def test_neighboring_rows_are_not_joined(self):
+        self.reader.start()
+        neighbor = [dict(text="Другая настройка", x=20, y=150, width=250, height=30)]
+        self.reader.finish(SimpleNamespace(data=self.result.data + [neighbor]))
+        self.assertEqual(self.messages, ["Включить фрагментацию: Выкл"])
+
+    def test_capture_excludes_wider_sibling_values(self):
+        sibling = SimpleNamespace(location=self.obj.location._replace(left=360), next=None,
+                                  UIAElement=SimpleNamespace(currentClassName="ComboBox"))
+        self.obj.parent.firstChild = sibling
+        self.reader.start()
+        self.capture.assert_called_once_with(100, 80, 260, 140)
+
+    def test_hidden_sibling_detection_is_not_generic_occlusion(self):
+        pane = SimpleNamespace(UIAElement=SimpleNamespace(currentClassName="SettingsPane"), processID=42, parent=None)
+        self.obj.parent = pane
+        visible = SimpleNamespace(processID=42, parent=pane,
+                                  UIAElement=SimpleNamespace(currentClassName="Switch"))
+        self.assertTrue(self.module.is_covered_setting(self.obj, visible))
+        visible.parent = SimpleNamespace(processID=42, parent=None)
+        self.assertFalse(self.module.is_covered_setting(self.obj, visible))
+
+    def test_nested_control_does_not_hide_itself(self):
+        hit = SimpleNamespace(processID=42, parent=self.obj)
+        self.assertFalse(self.module.is_covered_setting(self.obj, hit))

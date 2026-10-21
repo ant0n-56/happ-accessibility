@@ -3,26 +3,29 @@
 import re
 
 
-def setting_row_label(lines, width, height):
-    if width <= 0 or height <= 0:
-        return None
+def setting_label_from_pane(lines, info, target_rect):
     candidates = []
     for line in lines:
         if not line:
             continue
         words = sorted(line, key=lambda word: word["x"])
         if any(word["width"] <= 0 or word["height"] <= 0
-               or word["x"] < 0 or word["x"] + word["width"] > width
-               or word["y"] < 0 or word["y"] + word["height"] > height
-               or abs(word["y"] + word["height"] / 2 - height / 2) > height / 4
+               or word["x"] < 0 or word["y"] < 0
+               or word["x"] + word["width"] > info.recogWidth
+               or word["y"] + word["height"] > info.recogHeight for word in words):
+            continue
+        top = min(info.convertYToScreen(word["y"]) for word in words)
+        bottom = max(info.convertYToScreen(word["y"]) + info.convertHeightToScreen(word["height"]) for word in words)
+        center = (top + bottom) / 2
+        if not target_rect.top <= center <= target_rect.top + target_rect.height:
+            continue
+        if any(info.convertXToScreen(word["x"]) + info.convertWidthToScreen(word["width"]) > target_rect.left
                for word in words):
-            return None
+            continue
         text = " ".join(word["text"].strip() for word in words).strip().rstrip(":")
-        if not text or len(text) > 100 or not any(character.isalpha() for character in text):
-            return None
-        if any(ord(character) < 32 for character in text):
-            return None
-        candidates.append(text)
+        if (text and len(text) <= 100 and any(character.isalpha() for character in text)
+                and not any(ord(character) < 32 for character in text)):
+            candidates.append(text)
     return candidates[0] if len(candidates) == 1 else None
 
 

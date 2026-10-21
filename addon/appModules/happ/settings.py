@@ -12,7 +12,7 @@ from NVDAObjects import NVDAObject
 from utils.security import isRunningOnSecureDesktop
 from winAPI.sessionTracking import isLockScreenModeActive
 
-from .context import setting_row_label
+from .context import qml_type, setting_label_from_pane
 
 
 def belongs_to_control(hit, control):
@@ -23,6 +23,23 @@ def belongs_to_control(hit, control):
             return True
         if hit.processID != control.processID:
             return False
+        hit = hit.parent
+    return False
+
+
+def is_covered_setting(obj, hit):
+    if qml_type(obj.UIAElement.currentClassName) not in ("Switch", "ComboBox", "TextField", "SpinBox"):
+        return False
+    if hit is None or hit.processID != obj.processID or belongs_to_control(hit, obj):
+        return False
+    parent = obj.parent
+    if parent is None or qml_type(parent.UIAElement.currentClassName) != "SettingsPane":
+        return False
+    for depth in range(4):
+        if hit is None or hit.processID != obj.processID:
+            return False
+        if hit.parent == parent:
+            return qml_type(hit.UIAElement.currentClassName) in ("Switch", "ComboBox", "TextField", "SpinBox")
         hit = hit.parent
     return False
 
@@ -66,22 +83,40 @@ class SettingReader:
             rect = self.rect
             pane = self.parentRect
             left = pane.left
-            top = rect.top
-            width = rect.left - left
-            height = rect.height
             window = self.foreground.location
-            if (not window or not 20 <= width <= 2000 or not 12 <= height <= 120
-                    or top < pane.top or top + height > pane.top + pane.height
+            if (not window or not 12 <= rect.height <= 120
+                    or rect.top < pane.top or rect.top + rect.height > pane.top + pane.height
                     or rect.left + rect.width > pane.left + pane.width
-                    or left < window.left or top < window.top
+                    or left < window.left or rect.top < window.top
                     or rect.left + rect.width > window.left + window.width
-                    or top + height > window.top + window.height):
+                    or rect.top + rect.height > window.top + window.height):
+                return
+            right = rect.left
+            child = self.parent.firstChild
+            for index in range(64):
+                if child is None:
+                    break
+                child_rect = child.location
+                element = getattr(child, "UIAElement", None)
+                if element is None:
+                    return
+                if (child_rect and child_rect.width > 0 and child_rect.height > 0
+                        and qml_type(element.currentClassName) in ("Switch", "TextField", "ComboBox", "SpinBox")
+                        and left + 20 <= child_rect.left < right):
+                    right = child_rect.left
+                child = child.next
+            else:
+                return
+            top = max(pane.top, window.top)
+            bottom = min(pane.top + pane.height, window.top + window.height)
+            width, height = right - left, bottom - top
+            if not 20 <= width <= 1200 or not 12 <= height <= 1200:
                 return
             if not belongs_to_control(
-                    NVDAObject.objectFromPoint(rect.left + rect.width // 2, top + height // 2), self.obj):
+                    NVDAObject.objectFromPoint(rect.left + rect.width // 2, rect.top + rect.height // 2), self.obj):
                 return
             for offset in (1, width // 2, width - 1):
-                hit = NVDAObject.objectFromPoint(left + offset, top + height // 2)
+                hit = NVDAObject.objectFromPoint(left + offset, rect.top + rect.height // 2)
                 if hit is None or hit.processID != self.owner.processID:
                     return
             language = next((value for value in getLanguages() if value.lower().startswith("ru")), None)
@@ -106,7 +141,7 @@ class SettingReader:
         try:
             if not self.safe() or isinstance(result, Exception):
                 return
-            label = setting_row_label(result.data, self.info.recogWidth, self.info.recogHeight)
+            label = setting_label_from_pane(result.data, self.info, self.rect)
             if not label:
                 return
             self.obj._happRowLabel = (label, self.rect)

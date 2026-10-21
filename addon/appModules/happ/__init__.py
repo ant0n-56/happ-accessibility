@@ -6,6 +6,7 @@ import ui
 import core
 import mouseHandler
 import winUser
+from time import monotonic
 from NVDAObjects import NVDAObject
 from comtypes import COMError
 from controlTypes import Role, State
@@ -91,6 +92,8 @@ class ContextLabel(SettingsRowLabel):
 
 
 class AppModule(appModuleHandler.AppModule):
+    _settingsTab = None
+    _tabTimer = None
     _groupsMenu = None
     _settingReader = None
     _clickTimer = None
@@ -99,6 +102,10 @@ class AppModule(appModuleHandler.AppModule):
 
     def terminate(self):
         self._terminated = True
+        self._settingsTab = None
+        if self._tabTimer is not None:
+            self._tabTimer.Stop()
+            self._tabTimer = None
         if self._groupsMenu is not None:
             self._groupsMenu.cancel()
         if self._settingReader is not None:
@@ -116,6 +123,8 @@ class AppModule(appModuleHandler.AppModule):
             self._settingReader = None
         if isinstance(obj, SettingsRowLabel):
             obj._happRowLabel = None
+        if self._continueSettingsTab(obj):
+            return
         nextHandler()
         if self._terminated or isRunningOnSecureDesktop() or isLockScreenModeActive():
             return
@@ -125,13 +134,74 @@ class AppModule(appModuleHandler.AppModule):
             parent = obj.parent
             if not isinstance(parent, UIA) or qml_type(parent.UIAElement.currentClassName) != "SettingsPane":
                 return
-            if obj.name != obj.UIAElement.currentName:
+            if obj.name and obj.name != (obj.UIAElement.currentName or ""):
                 return
             from .settings import SettingReader
             self._settingReader = SettingReader(self, obj)
             self._settingReader.timer = core.callLater(250, self._settingReader.start)
         except (COMError, RuntimeError):
             log.debugWarning("Happ focused setting unavailable")
+
+    @script(description="Перейти по Tab, пропуская перекрытые поля настроек Happ",
+            category="Happ", gestures=["kb:tab", "kb:shift+tab"])
+    def script_settingsTab(self, gesture):
+        if self._tabTimer is not None:
+            self._tabTimer.Stop()
+            self._tabTimer = None
+        self._settingsTab = None
+        if not self._terminated and not isRunningOnSecureDesktop() and not isLockScreenModeActive():
+            try:
+                obj = api.getFocusObject()
+                if (isinstance(obj, SettingsRowLabel) and obj.processID == self.processID
+                        and isinstance(obj.parent, UIA)
+                        and qml_type(obj.parent.UIAElement.currentClassName) == "SettingsPane"):
+                    foreground = api.getForegroundObject()
+                    if foreground.processID == self.processID:
+                        self._settingsTab = (gesture, foreground, monotonic() + 2, 24)
+            except (COMError, RuntimeError):
+                log.debugWarning("Happ Tab context unavailable")
+        gesture.send()
+
+    def _continueSettingsTab(self, obj):
+        pending = self._settingsTab
+        self._settingsTab = None
+        if pending is None or not isinstance(obj, SettingsRowLabel):
+            return False
+        gesture, foreground, deadline, remaining = pending
+        try:
+            if (self._terminated or isRunningOnSecureDesktop() or isLockScreenModeActive()
+                    or monotonic() > deadline or not remaining
+                    or api.getForegroundObject() != foreground or api.getFocusObject() != obj):
+                return False
+            rect = obj.location
+            if not rect or rect.width <= 0 or rect.height <= 0:
+                return False
+            from .settings import is_covered_setting
+            hit = NVDAObject.objectFromPoint(rect.left + rect.width // 2, rect.top + rect.height // 2)
+            if not is_covered_setting(obj, hit):
+                return False
+            self._settingsTab = (gesture, foreground, deadline, remaining - 1)
+            self._tabTimer = core.callLater(30, self._skipHiddenSetting, obj, self._settingsTab)
+            return True
+        except (COMError, RuntimeError):
+            log.debugWarning("Happ Tab target unavailable")
+            return False
+
+    def _skipHiddenSetting(self, obj, pending):
+        self._tabTimer = None
+        if self._settingsTab is not pending:
+            return
+        gesture, foreground, deadline, remaining = pending
+        try:
+            if (self._terminated or isRunningOnSecureDesktop() or isLockScreenModeActive()
+                    or monotonic() > deadline or api.getForegroundObject() != foreground
+                    or api.getFocusObject() != obj):
+                self._settingsTab = None
+                return
+            gesture.send()
+        except (COMError, RuntimeError):
+            self._settingsTab = None
+            log.debugWarning("Happ Tab continuation unavailable")
 
     def _clickNavigation(self, button, foreground, retries=40):
         self._clickTimer = None
