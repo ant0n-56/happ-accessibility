@@ -92,6 +92,30 @@ class NavigationTests(unittest.TestCase):
         reader.cancel.assert_called_once_with()
         self.assertIsNone(self.app._settingReader)
 
+    def test_settings_groups_refuses_page_without_panes(self):
+        self.app.script_settingsGroups(None)
+        self.assertEqual(self.mouse_events, [])
+        self.assertIn("Откройте главную страницу настроек Happ", self.messages)
+
+    def test_navigation_cancels_settings_group_action(self):
+        from unittest.mock import Mock
+        groups = self.app._groupsMenu = Mock()
+        self.app.script_navigation(None)
+        groups.cancel.assert_called_once_with()
+        self.assertIsNone(self.app._groupsMenu)
+
+    def test_termination_cancels_settings_group_action(self):
+        from unittest.mock import Mock
+        groups = self.app._groupsMenu = Mock()
+        self.app.terminate()
+        groups.cancel.assert_called_once_with()
+
+    def test_settings_groups_refuses_locked_session(self):
+        self.locked = True
+        self.app.script_settingsGroups(None)
+        self.assertEqual(self.mouse_events, [])
+        self.assertEqual(self.messages, [])
+
     def move_cursor(self, *point):
         self.cursor = point
 

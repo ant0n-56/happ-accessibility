@@ -91,6 +91,7 @@ class ContextLabel(SettingsRowLabel):
 
 
 class AppModule(appModuleHandler.AppModule):
+    _groupsMenu = None
     _settingReader = None
     _clickTimer = None
     _terminated = False
@@ -98,6 +99,8 @@ class AppModule(appModuleHandler.AppModule):
 
     def terminate(self):
         self._terminated = True
+        if self._groupsMenu is not None:
+            self._groupsMenu.cancel()
         if self._settingReader is not None:
             self._settingReader.cancel()
         if self._panelMenu is not None:
@@ -181,6 +184,9 @@ class AppModule(appModuleHandler.AppModule):
         gesture="kb:NVDA+alt+n",
     )
     def script_navigation(self, gesture):
+        if self._groupsMenu is not None:
+            self._groupsMenu.cancel()
+            self._groupsMenu = None
         if self._panelMenu is not None:
             self._panelMenu.cancel()
             self._panelMenu = None
@@ -238,6 +244,60 @@ class AppModule(appModuleHandler.AppModule):
         except (COMError, RuntimeError):
             log.debugWarning("Happ navigation provider became unavailable")
             ui.message("Не удалось открыть панель навигации Happ")
+
+    @script(description="Выбрать видимый заголовок группы настроек Happ", category="Happ")
+    def script_settingsGroups(self, gesture):
+        if self._groupsMenu is not None:
+            self._groupsMenu.cancel()
+            self._groupsMenu = None
+        if self._panelMenu is not None:
+            self._panelMenu.cancel()
+            self._panelMenu = None
+        if self._clickTimer is not None:
+            self._clickTimer.Stop()
+            self._clickTimer = None
+        if self._terminated or isRunningOnSecureDesktop() or isLockScreenModeActive():
+            return
+        try:
+            foreground = api.getForegroundObject()
+            if (not isinstance(foreground, UIA) or foreground.processID != self.processID
+                    or qml_type(foreground.UIAElement.currentClassName) != "Main"):
+                return
+            pending = [(foreground, 0)]
+            groups = []
+            visited = 0
+            while pending and visited < 160:
+                obj, depth = pending.pop()
+                visited += 1
+                if not isinstance(obj, UIA) or obj.processID != self.processID:
+                    continue
+                if qml_type(obj.UIAElement.currentClassName) == "SettingsPane":
+                    groups.append(obj)
+                    continue
+                if depth < 3:
+                    child = obj.firstChild
+                    for index in range(64):
+                        if child is None:
+                            break
+                        pending.append((child, depth + 1))
+                        child = child.next
+                    else:
+                        ui.message("Структура настроек неоднозначна")
+                        return
+            if pending or not groups:
+                ui.message("Откройте главную страницу настроек Happ")
+                return
+            viewport = groups[0].parent
+            if (not isinstance(viewport, UIA) or qml_type(viewport.UIAElement.currentClassName) != "StackView"
+                    or any(group.parent != viewport for group in groups)):
+                ui.message("Не удалось определить область настроек")
+                return
+            from .settingsGroups import SettingsGroups
+            self._groupsMenu = SettingsGroups(self)
+            self._groupsMenu.start(foreground, viewport, groups)
+        except (COMError, RuntimeError):
+            log.debugWarning("Happ settings structure unavailable", exc_info=True)
+            ui.message("Не удалось прочитать структуру настроек")
 
     def chooseNVDAObjectOverlayClasses(self, obj, clsList):
         if not isinstance(obj, UIA):
