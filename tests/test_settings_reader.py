@@ -83,6 +83,46 @@ class SettingReaderTests(unittest.TestCase):
         self.reader = self.module.SettingReader(self.owner, self.obj)
         self.result.data = [[dict(text="Правила маршрутизации", x=20, y=20, width=300, height=20)]]
 
+    def heading_reader(self):
+        self.obj.location = self.obj.location._replace(left=100, width=420)
+        self.obj.parent.location = self.obj.location
+        self.obj.parent.UIAElement = SimpleNamespace(currentClassName="SettingsPane")
+        self.obj.parent.parent = SimpleNamespace(UIAElement=SimpleNamespace(currentClassName="StackView"),
+                                                location=self.foreground.location)
+        self.obj.parent.firstChild = self.obj
+        self.obj.next = None
+        self.obj.UIAElement.currentName = ""
+        self.reader = self.module.SettingReader(self.owner, self.obj)
+        self.result.data = [[dict(text="User agent", x=0, y=20, width=120, height=24)]]
+
+    def test_full_width_editor_reads_heading_without_capturing_value(self):
+        self.heading_reader()
+        self.reader.start()
+        self.capture.assert_called_once_with(100, 65, 420, 35)
+        self.reader.finish(self.result)
+        self.assertEqual(self.messages, ["Агент пользователя (User agent)"])
+        self.assertEqual(self.obj.UIAElement.currentName, "")
+
+    def test_unknown_heading_is_not_assigned_user_agent_name(self):
+        self.heading_reader()
+        self.result.data[0][0]["text"] = "Другое поле"
+        self.reader.start()
+        self.reader.finish(self.result)
+        self.assertEqual(self.messages, [])
+
+    def test_heading_outside_container_is_not_captured(self):
+        self.heading_reader()
+        self.obj.parent.parent.location = self.obj.location
+        self.reader.start()
+        self.capture.assert_not_called()
+
+    def test_heading_result_discarded_after_focus_change(self):
+        self.heading_reader()
+        self.reader.start()
+        self.focus = object()
+        self.reader.finish(self.result)
+        self.assertEqual(self.messages, [])
+
     def test_routing_menu_uses_verified_header_not_values(self):
         self.menu_reader()
         self.reader.start()

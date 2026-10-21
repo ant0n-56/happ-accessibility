@@ -3,6 +3,7 @@ import core
 import screenBitmap
 import ui
 import wx
+from types import SimpleNamespace
 from comtypes import COMError
 from contentRecog import RecogImageInfo
 from contentRecog.uwpOcr import UwpOcr, getLanguages
@@ -55,6 +56,7 @@ class SettingReader:
         self.timer = None
         self.recognizer = None
         self.cancelled = False
+        self.headingRect = None
 
     def cancel(self):
         self.cancelled = True
@@ -125,13 +127,26 @@ class SettingReader:
                 if rect.top + rect.height > bottom or rect.top - top > 2 * rect.height:
                     return
             width, height = min(right - left, 1200), bottom - top
+            if (qml_type(self.obj.UIAElement.currentClassName) == "TextField"
+                    and rect == pane and children == [("TextField", rect)]):
+                container = self.parent.parent
+                if (qml_type(self.parent.UIAElement.currentClassName) != "SettingsPane"
+                        or container is None
+                        or qml_type(container.UIAElement.currentClassName) != "StackView"
+                        or not container.location):
+                    return
+                top = max(window.top, container.location.top, pane.top - rect.height)
+                bottom = pane.top
+                width, height = min(pane.width, 1200), bottom - top
+                self.headingRect = SimpleNamespace(left=left + width, top=top, height=height)
             if not 20 <= width <= 1200 or not 12 <= height <= 1200:
                 return
             if not belongs_to_control(
                     NVDAObject.objectFromPoint(rect.left + rect.width // 2, rect.top + rect.height // 2), self.obj):
                 return
             for offset in (1, width // 2, width - 1):
-                hit = NVDAObject.objectFromPoint(left + offset, rect.top + rect.height // 2)
+                sample_y = top + height // 2 if self.headingRect else rect.top + rect.height // 2
+                hit = NVDAObject.objectFromPoint(left + offset, sample_y)
                 if hit is None or hit.processID != self.owner.processID:
                     return
             language = next((value for value in getLanguages() if value.lower().startswith("ru")), None)
@@ -156,9 +171,13 @@ class SettingReader:
         try:
             if not self.safe() or isinstance(result, Exception):
                 return
-            label = setting_label_from_pane(result.data, self.info, self.rect)
+            label = setting_label_from_pane(result.data, self.info, self.headingRect or self.rect)
             if not label:
                 return
+            if self.headingRect:
+                if label != "User agent":
+                    return
+                label = "Агент пользователя (User agent)"
             if qml_type(self.obj.UIAElement.currentClassName) == "ImageButton":
                 if label != "Правила маршрутизации":
                     return
