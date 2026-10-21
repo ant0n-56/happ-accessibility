@@ -131,6 +131,25 @@ def is_subscription_link(target_rect, parent_rect, controls):
             and parent_top <= bar_top < bar_top + bar_height <= parent_top + parent_height)
 
 
+def is_subscription_info(parent_rect, controls):
+    if parent_rect is None:
+        return False
+    if len(controls) == 2:
+        icons = [rect for kind, name, rect in controls if qml_type(kind) == "ImageButton"]
+        return len(icons) == 1 and is_subscription_link(icons[0], parent_rect, controls)
+    if len(controls) != 1:
+        return False
+    kind, name, rect = controls[0]
+    if qml_type(kind) != "ProgressBar" or rect is None:
+        return False
+    left, top, width, height = parent_rect
+    bar_left, bar_top, bar_width, bar_height = rect
+    return (width > 0 and height > 0 and width / 2 <= bar_width <= width
+            and 0 < bar_height <= height
+            and left <= bar_left < bar_left + bar_width <= left + width
+            and top <= bar_top < bar_top + bar_height <= top + height)
+
+
 def subscription_header_label(target_rect, controls, rows):
     if target_rect is None or not is_server_search([(kind, name) for kind, name, rect in controls]):
         return None

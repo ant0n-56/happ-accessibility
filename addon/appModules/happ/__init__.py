@@ -16,7 +16,7 @@ from scriptHandler import script
 from utils.security import isRunningOnSecureDesktop
 from winAPI.sessionTracking import isLockScreenModeActive
 
-from .context import interface_setting_label, is_subscription_link, search_toolbar_label, subscription_header_label, is_server_search, qml_type
+from .context import interface_setting_label, is_subscription_info, is_subscription_link, search_toolbar_label, subscription_header_label, is_server_search, qml_type
 
 
 class SettingsRowLabel(UIA):
@@ -87,10 +87,8 @@ class ContextLabel(SettingsRowLabel):
                             break
                         parts.append((part.UIAElement.currentClassName, part.UIAElement.currentName, part.location))
                         part = part.next
-                    if part is None:
-                        icons = [area for part_kind, name, area in parts if qml_type(part_kind) == "ImageButton"]
-                        if len(icons) == 1 and is_subscription_link(icons[0], child.location, parts):
-                            subscription_rows.append(child.location)
+                    if part is None and is_subscription_info(child.location, parts):
+                        subscription_rows.append(child.location)
                 child = child.next
             else:
                 return native_name

@@ -113,6 +113,51 @@ class SearchContextTests(unittest.TestCase):
         controls, icons, rows = self.header_controls()
         self.assertIsNone(context.subscription_header_label(icons[0], controls[1:], rows))
 
+    def test_subscription_info_with_and_without_link(self):
+        for scale, offset in ((1, 0), (1.5, -700), (2, 500)):
+            transform = lambda rect: tuple(value * scale + (offset if index < 2 else 0)
+                                          for index, value in enumerate(rect))
+            for parent, parts in (
+                ((188, 195, 822, 24), [("ProgressBar", "", (200, 199, 697, 16))]),
+                ((188, 195, 822, 45), [("ProgressBar", "", (200, 198, 653, 16)),
+                                         ("ImageButton", "", (966, 197, 32, 18))]),
+            ):
+                transformed = [(kind + "_QMLTYPE_42", name, transform(rect)) for kind, name, rect in parts]
+                self.assertTrue(context.is_subscription_info(transform(parent), list(reversed(transformed))))
+
+    def test_subscription_info_rejects_unknown_and_incomplete_rows(self):
+        parent = (188, 195, 822, 24)
+        bar = ("ProgressBar", "", (200, 199, 697, 16))
+        for parts in ([], [bar, bar], [("Button", "", bar[2])],
+                      [("ProgressBar", "", None)], [bar, ("ImageButton", "", (0, 0, 20, 20))]):
+            self.assertFalse(context.is_subscription_info(parent, parts))
+        self.assertFalse(context.is_subscription_info(None, [bar]))
+        for rect in ((200, 250, 697, 16), (0, 199, 697, 16), (200, 199, 900, 16),
+                     (200, 199, 697, 40), (200, 199, 30, 16), (200, 199, 697, 0)):
+            self.assertFalse(context.is_subscription_info(parent, [("ProgressBar", "", rect)]))
+
+    def test_new_subscription_without_link_names_all_header_buttons(self):
+        controls = [(kind, name, rect) for (kind, name), rect in zip(self.controls,
+                    [(188, 87, 756, 40), (1385, 916, 192, 32),
+                     (1483, 976, 52, 24), (1427, 976, 52, 24)])]
+        icons = [(left, 159, 20, 20) for left in (924, 952, 980)]
+        controls += [("ImageButton", "", rect) for rect in icons]
+        row = (188, 195, 822, 24)
+        parts = [("ProgressBar", "", (200, 199, 697, 16))]
+        rows = [row] if context.is_subscription_info(row, parts) else []
+        for icon, label in zip(icons, ("Обновить подписку", "Пинг подписки", "Меню подписки")):
+            self.assertEqual(context.subscription_header_label(icon, controls, rows), label)
+
+    def test_multiple_subscription_headers_use_their_own_row(self):
+        controls, icons, rows = self.header_controls()
+        second_icons = [(left, top + 300, width, height) for left, top, width, height in icons]
+        controls += [("ImageButton", "", rect) for rect in second_icons]
+        left, top, width, height = rows[0]
+        rows.append((left, top + 300, width, 24))
+        for group in (icons, second_icons):
+            for icon, label in zip(group, ("Обновить подписку", "Пинг подписки", "Меню подписки")):
+                self.assertEqual(context.subscription_header_label(icon, controls, rows), label)
+
 
 if __name__ == "__main__":
     unittest.main()
