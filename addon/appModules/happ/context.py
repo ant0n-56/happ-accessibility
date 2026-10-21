@@ -129,3 +129,29 @@ def is_subscription_link(target_rect, parent_rect, controls):
             and left >= parent_left + parent_width * 0.85
             and parent_top <= top <= bar_top + bar_height / 2 <= top + height <= parent_top + parent_height
             and parent_top <= bar_top < bar_top + bar_height <= parent_top + parent_height)
+
+
+def subscription_header_label(target_rect, controls, rows):
+    if target_rect is None or not is_server_search([(kind, name) for kind, name, rect in controls]):
+        return None
+    left, top, width, height = target_rect
+    if width <= 0 or height <= 0:
+        return None
+    search = next(rect for kind, name, rect in controls if qml_type(kind) == "TextField")
+    if search is None or top < search[1] + search[3]:
+        return None
+    icons = sorted([rect for kind, name, rect in controls
+                    if qml_type(kind) == "ImageButton" and not name and rect is not None
+                    and rect[1:] == (top, width, height)], key=lambda rect: rect[0])
+    if len(icons) != 3 or target_rect not in icons:
+        return None
+    if any(not 0 <= after[0] - before[0] - width <= width
+           for before, after in zip(icons, icons[1:])):
+        return None
+    anchors = [row for row in rows if row is not None
+               and row[2] > 0 and row[3] > 0 and row[0] <= icons[0][0]
+               and 0 <= row[1] - top - height <= 2 * height
+               and 0 <= row[0] + row[2] - icons[-1][0] - width <= width]
+    if len(anchors) != 1:
+        return None
+    return ("Обновить подписку", "Пинг подписки", "Меню подписки")[icons.index(target_rect)]

@@ -83,6 +83,36 @@ class SearchContextTests(unittest.TestCase):
         controls = [("ImageButton", "", target), ("ProgressBar", "", (200, 198, 653, 16))]
         self.assertFalse(context.is_subscription_link(target, parent, controls))
 
+    def header_controls(self, scale=1, offset=0):
+        transform = lambda rect: tuple(value * scale + (offset if index < 2 else 0) for index, value in enumerate(rect))
+        icons = [transform((left, 160, 20, 20)) for left in (584, 612, 640)]
+        controls = self.menu_controls(scale, offset) + [("ImageButton_QMLTYPE_99", "", area) for area in icons]
+        return controls, icons, [transform((100, 196, 570, 45))]
+
+    def test_header_buttons_survive_scale_move_and_reordering(self):
+        for scale, offset in ((1, 0), (2, -500), (1.5, 250)):
+            controls, icons, rows = self.header_controls(scale, offset)
+            for area, label in zip(icons, ("Обновить подписку", "Пинг подписки", "Меню подписки")):
+                self.assertEqual(context.subscription_header_label(area, list(reversed(controls)), rows), label)
+
+    def test_header_requires_unique_subscription_anchor(self):
+        controls, icons, rows = self.header_controls()
+        self.assertIsNone(context.subscription_header_label(icons[0], controls, []))
+        self.assertIsNone(context.subscription_header_label(icons[0], controls, rows * 2))
+
+    def test_header_rejects_extra_or_missing_icons(self):
+        controls, icons, rows = self.header_controls()
+        self.assertIsNone(context.subscription_header_label(icons[0], controls[:-1], rows))
+        self.assertIsNone(context.subscription_header_label(icons[0], controls + [controls[-1]], rows))
+
+    def test_header_does_not_name_search_toolbar(self):
+        controls, icons, rows = self.header_controls()
+        self.assertIsNone(context.subscription_header_label(controls[4][2], controls, rows))
+
+    def test_header_requires_server_page(self):
+        controls, icons, rows = self.header_controls()
+        self.assertIsNone(context.subscription_header_label(icons[0], controls[1:], rows))
+
 
 if __name__ == "__main__":
     unittest.main()

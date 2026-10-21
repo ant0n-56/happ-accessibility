@@ -16,7 +16,7 @@ from scriptHandler import script
 from utils.security import isRunningOnSecureDesktop
 from winAPI.sessionTracking import isLockScreenModeActive
 
-from .context import interface_setting_label, is_subscription_link, search_toolbar_label, is_server_search, qml_type
+from .context import interface_setting_label, is_subscription_link, search_toolbar_label, subscription_header_label, is_server_search, qml_type
 
 
 class SettingsRowLabel(UIA):
@@ -71,6 +71,7 @@ class ContextLabel(SettingsRowLabel):
             controls = []
             child = parent.firstChild
             # A bounded walk also prevents a broken provider from looping forever.
+            subscription_rows = []
             for _ in range(64):
                 if child is None:
                     break
@@ -78,6 +79,18 @@ class ContextLabel(SettingsRowLabel):
                     return native_name
                 element = child.UIAElement
                 controls.append((element.currentClassName, element.currentName, child.location))
+                if parent_kind == "QQuickControl" and qml_type(element.currentClassName) == "ServerItem":
+                    parts = []
+                    part = child.firstChild
+                    for part_index in range(3):
+                        if part is None or not isinstance(part, UIA):
+                            break
+                        parts.append((part.UIAElement.currentClassName, part.UIAElement.currentName, part.location))
+                        part = part.next
+                    if part is None:
+                        icons = [area for part_kind, name, area in parts if qml_type(part_kind) == "ImageButton"]
+                        if len(icons) == 1 and is_subscription_link(icons[0], child.location, parts):
+                            subscription_rows.append(child.location)
                 child = child.next
             else:
                 return native_name
@@ -103,7 +116,8 @@ class ContextLabel(SettingsRowLabel):
             if kind == "TextField" and is_server_search([(c, n) for c, n, _ in controls]):
                 return "Поиск серверов"
             if kind == "ImageButton":
-                return search_toolbar_label(self.location, controls) or native_name
+                return (search_toolbar_label(self.location, controls)
+                        or subscription_header_label(self.location, controls, subscription_rows) or native_name)
         except (COMError, RuntimeError):
             # Closing a Qt window can invalidate its accessibility objects.
             log.debugWarning("Happ search context became unavailable")
