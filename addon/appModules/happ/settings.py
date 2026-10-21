@@ -92,6 +92,8 @@ class SettingReader:
                     or rect.top + rect.height > window.top + window.height):
                 return
             right = rect.left
+            menu = qml_type(self.obj.UIAElement.currentClassName) == "ImageButton"
+            children = []
             child = self.parent.firstChild
             for index in range(64):
                 if child is None:
@@ -100,6 +102,7 @@ class SettingReader:
                 element = getattr(child, "UIAElement", None)
                 if element is None:
                     return
+                children.append((qml_type(element.currentClassName), child_rect))
                 if (child_rect and child_rect.width > 0 and child_rect.height > 0
                         and qml_type(element.currentClassName) in ("Switch", "TextField", "ComboBox", "SpinBox")
                         and left + 20 <= child_rect.left < right):
@@ -109,6 +112,18 @@ class SettingReader:
                 return
             top = max(pane.top, window.top)
             bottom = min(pane.top + pane.height, window.top + window.height)
+            if menu:
+                if (qml_type(self.parent.UIAElement.currentClassName) != "StackView"
+                        or any(kind not in ("ImageButton", "SettingsPane") for kind, area in children)
+                        or sum(kind == "ImageButton" for kind, area in children) != 1):
+                    return
+                panes = [area for kind, area in children if kind == "SettingsPane"]
+                if not panes or any(not area or area.width <= 0 or area.height <= 0 for area in panes):
+                    return
+                bottom = min(bottom, min(area.top for area in panes))
+                left = max(left, min(area.left for area in panes))
+                if rect.top + rect.height > bottom or rect.top - top > 2 * rect.height:
+                    return
             width, height = right - left, bottom - top
             if not 20 <= width <= 1200 or not 12 <= height <= 1200:
                 return
@@ -144,6 +159,10 @@ class SettingReader:
             label = setting_label_from_pane(result.data, self.info, self.rect)
             if not label:
                 return
+            if qml_type(self.obj.UIAElement.currentClassName) == "ImageButton":
+                if label != "Правила маршрутизации":
+                    return
+                label = "Меню правил маршрутизации"
             self.obj._happRowLabel = (label, self.rect)
             native = self.obj.UIAElement.currentName
             ui.message(f"{label}: {native}" if native else label)

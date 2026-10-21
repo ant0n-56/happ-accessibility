@@ -71,6 +71,51 @@ class SettingReaderTests(unittest.TestCase):
         self.assertEqual(self.obj.UIAElement.currentName, "Выкл")
         self.assertEqual(self.obj._happRowLabel[0], "Включить фрагментацию")
 
+    def menu_reader(self):
+        self.obj.UIAElement.currentClassName = "ImageButton"
+        self.obj.UIAElement.currentName = ""
+        self.obj.location = self.obj.location._replace(top=85, width=20, height=20)
+        self.obj.parent.UIAElement = SimpleNamespace(currentClassName="StackView")
+        self.obj.parent.firstChild = self.obj
+        self.obj.next = SimpleNamespace(
+            UIAElement=SimpleNamespace(currentClassName="SettingsPane"),
+            location=self.obj.location._replace(left=110, top=120, width=400, height=50), next=None)
+        self.reader = self.module.SettingReader(self.owner, self.obj)
+        self.result.data = [[dict(text="Правила маршрутизации", x=20, y=20, width=300, height=20)]]
+
+    def test_routing_menu_uses_verified_header_not_values(self):
+        self.menu_reader()
+        self.reader.start()
+        self.capture.assert_called_once_with(110, 80, 290, 40)
+        self.reader.finish(self.result)
+        self.assertEqual(self.messages, ["Меню правил маршрутизации"])
+
+    def test_unknown_menu_header_is_not_assigned_routing_name(self):
+        self.menu_reader()
+        self.result.data[0][0]["text"] = "Другие настройки"
+        self.reader.start()
+        self.reader.finish(self.result)
+        self.assertEqual(self.messages, [])
+
+    def test_ambiguous_menu_buttons_are_not_read(self):
+        self.menu_reader()
+        self.obj.next.next = SimpleNamespace(UIAElement=self.obj.UIAElement,
+                                            location=self.obj.location, next=None)
+        self.reader.start()
+        self.capture.assert_not_called()
+
+    def test_menu_without_settings_pane_is_not_read(self):
+        self.menu_reader()
+        self.obj.next = None
+        self.reader.start()
+        self.capture.assert_not_called()
+
+    def test_menu_overlapping_parameter_is_not_read(self):
+        self.menu_reader()
+        self.obj.next.location = self.obj.next.location._replace(top=100)
+        self.reader.start()
+        self.capture.assert_not_called()
+
     def test_changed_focus_discards_result(self):
         self.reader.start()
         self.focus = object()

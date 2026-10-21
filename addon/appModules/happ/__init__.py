@@ -132,7 +132,12 @@ class AppModule(appModuleHandler.AppModule):
             if not isinstance(obj, SettingsRowLabel) or obj.processID != self.processID:
                 return
             parent = obj.parent
-            if not isinstance(parent, UIA) or qml_type(parent.UIAElement.currentClassName) != "SettingsPane":
+            if not isinstance(parent, UIA):
+                return
+            parent_kind = qml_type(parent.UIAElement.currentClassName)
+            menu = (parent_kind == "StackView"
+                    and qml_type(obj.UIAElement.currentClassName) == "ImageButton")
+            if parent_kind != "SettingsPane" and not menu:
                 return
             if obj.name and obj.name != (obj.UIAElement.currentName or ""):
                 return
