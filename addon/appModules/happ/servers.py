@@ -1,8 +1,10 @@
 import api
 import core
 import gui
+import mouseHandler
 import screenBitmap
 import ui
+import winUser
 import wx
 from comtypes import COMError
 from contentRecog import RecogImageInfo
@@ -172,20 +174,11 @@ class ServerMenu(PanelMenu):
                 return
             if self.selection is not None:
                 selected = self.selection
-                self.selection = None
                 if entries.count(selected) != 1:
                     self.cancel()
                     ui.message("Название сервера изменилось. Выбор отменён")
                     return
-                target = self.rows[selected[0]]
-                pattern = target.UIAInvokePattern
-                if not pattern or not self.unchanged():
-                    self.cancel()
-                    ui.message("Happ не предоставляет доступного действия для этой строки")
-                    return
-                self.cancel()
-                pattern.Invoke()
-                ui.message("Команда выбора сервера отправлена. Проверьте результат в Happ")
+                self.activate()
                 return
             if not entries:
                 self.cancel()
@@ -217,4 +210,41 @@ class ServerMenu(PanelMenu):
         except (COMError, RuntimeError, OSError, NotImplementedError):
             self.cancel()
             log.debugWarning("Happ server action unavailable")
+            ui.message("Не удалось подтвердить выбор сервера. Повторное нажатие не отправлено")
+
+    def activate(self, retries=40):
+        self.actionTimer = None
+        try:
+            if not self.unchanged() or self.selection is None:
+                self.cancel()
+                return
+            if any(winUser.getAsyncKeyState(key) & 0x8000 for key in range(1, 256)):
+                if retries:
+                    self.actionTimer = core.callLater(50, self.activate, retries - 1)
+                else:
+                    self.cancel()
+                    ui.message("Отпустите клавиши и повторите команду")
+                return
+            rect = self.rectangles[self.selection[0]]
+            target = self.rows[self.selection[0]]
+            point = (rect.left + rect.width // 2, rect.top + rect.height // 2)
+            previous = winUser.getCursorPos()
+            try:
+                winUser.setCursorPos(*point)
+                if (not self.unchanged() or tuple(winUser.getCursorPos()) != point
+                        or NVDAObject.objectFromPoint(*point) != target):
+                    return
+                self.selection = None
+                try:
+                    mouseHandler.executeMouseEvent(winUser.MOUSEEVENTF_LEFTDOWN, 0, 0)
+                finally:
+                    mouseHandler.executeMouseEvent(winUser.MOUSEEVENTF_LEFTUP, 0, 0)
+                ui.message("Нажатие строки сервера отправлено. Проверьте результат в Happ")
+            finally:
+                if tuple(winUser.getCursorPos()) == point:
+                    winUser.setCursorPos(*previous)
+                self.cancel()
+        except (COMError, RuntimeError, OSError):
+            self.cancel()
+            log.debugWarning("Happ server row click failed")
             ui.message("Не удалось подтвердить выбор сервера. Повторное нажатие не отправлено")

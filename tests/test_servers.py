@@ -29,6 +29,9 @@ class ServerTests(unittest.TestCase):
         self.locked = False
         self.messages = []
         self.pending = []
+        self.cursor = (20, 30)
+        self.held = False
+        self.mouse = Mock()
         self.row = Node("ServerItem", rect=Rect(100, 200, 800, 48))
         self.controls = [Node("TextField"), Node("Button", "Тест пинга"),
                          Node("ToogleButton", "TUN"), Node("ToogleButton", "Прокси"), self.row]
@@ -39,6 +42,10 @@ class ServerTests(unittest.TestCase):
         modules = {
             "api": SimpleNamespace(getForegroundObject=lambda: self.foreground),
             "core": SimpleNamespace(callLater=Mock()),
+            "mouseHandler": SimpleNamespace(executeMouseEvent=self.mouse),
+            "winUser": SimpleNamespace(getAsyncKeyState=lambda key: 0x8000 if self.held else 0,
+                                       getCursorPos=lambda: self.cursor, setCursorPos=self.move,
+                                       MOUSEEVENTF_LEFTDOWN=2, MOUSEEVENTF_LEFTUP=4),
             "gui": SimpleNamespace(mainFrame=Mock()),
             "screenBitmap": SimpleNamespace(),
             "ui": SimpleNamespace(message=self.messages.append),
@@ -78,6 +85,9 @@ class ServerTests(unittest.TestCase):
         self.match = matching.start()
         self.addCleanup(matching.stop)
 
+    def move(self, *point):
+        self.cursor = point
+
     def test_title_bar_before_content_is_not_a_server_container(self):
         self.assertEqual(self.module.find_rows(self.window), [self.row])
 
@@ -104,7 +114,9 @@ class ServerTests(unittest.TestCase):
     def test_confirmed_row_invoked_once(self):
         self.menu.show(SimpleNamespace(data=[]))
         self.menu.show(SimpleNamespace(data=[]))
-        self.row.UIAInvokePattern.Invoke.assert_called_once()
+        self.assertEqual(self.mouse.call_count, 2)
+        self.assertEqual(self.cursor, (20, 30))
+        self.row.UIAInvokePattern.Invoke.assert_not_called()
         self.assertTrue(self.menu.cancelled)
 
     def test_secondary_language_finishes_before_action(self):
@@ -118,7 +130,7 @@ class ServerTests(unittest.TestCase):
         self.row.UIAInvokePattern.Invoke.assert_not_called()
         self.match.return_value = [(0, "Латвия")]
         self.menu.show(SimpleNamespace(data=[]))
-        self.row.UIAInvokePattern.Invoke.assert_called_once()
+        self.assertEqual(self.mouse.call_count, 2)
 
     def test_cancel_between_languages_prevents_action(self):
         self.menu.secondaryLanguage = "en-US"
@@ -128,38 +140,59 @@ class ServerTests(unittest.TestCase):
         self.menu.cancel()
         self.menu.show(SimpleNamespace(data=[]))
         self.row.UIAInvokePattern.Invoke.assert_not_called()
+        self.mouse.assert_not_called()
 
     def test_changed_label_is_not_invoked(self):
         self.match.return_value = [(0, "Другой сервер")]
         self.menu.show(SimpleNamespace(data=[]))
         self.row.UIAInvokePattern.Invoke.assert_not_called()
+        self.mouse.assert_not_called()
 
     def test_moved_row_is_not_invoked(self):
         self.row.location = Rect(100, 201, 800, 48)
         self.menu.show(SimpleNamespace(data=[]))
         self.row.UIAInvokePattern.Invoke.assert_not_called()
+        self.mouse.assert_not_called()
 
     def test_locked_session_is_not_invoked(self):
         self.locked = True
         self.menu.show(SimpleNamespace(data=[]))
         self.row.UIAInvokePattern.Invoke.assert_not_called()
+        self.mouse.assert_not_called()
 
     def test_changed_focus_is_not_invoked(self):
         self.foreground = object()
         self.menu.show(SimpleNamespace(data=[]))
         self.row.UIAInvokePattern.Invoke.assert_not_called()
+        self.mouse.assert_not_called()
 
     def test_occluded_row_is_not_invoked(self):
         self.hit = object()
         self.menu.show(SimpleNamespace(data=[]))
         self.row.UIAInvokePattern.Invoke.assert_not_called()
+        self.mouse.assert_not_called()
 
-    def test_invocation_failure_has_no_retry(self):
-        self.row.UIAInvokePattern.Invoke.side_effect = RuntimeError()
+    def test_click_failure_has_no_retry(self):
+        self.mouse.side_effect = RuntimeError()
         self.menu.show(SimpleNamespace(data=[]))
         self.menu.show(SimpleNamespace(data=[]))
-        self.row.UIAInvokePattern.Invoke.assert_called_once()
+        self.assertEqual(self.mouse.call_count, 2)
         self.assertIn("Повторное нажатие не отправлено", self.messages[-1])
+
+    def test_held_key_wait_has_limit(self):
+        self.held = True
+        self.menu.activate(retries=0)
+        self.mouse.assert_not_called()
+        self.assertTrue(self.menu.cancelled)
+
+    def test_focus_change_during_cursor_move_prevents_click(self):
+        def move_and_obscure(*point):
+            self.cursor = point
+            self.hit = object()
+        with patch.object(self.module.winUser, "setCursorPos", move_and_obscure):
+            self.menu.activate()
+        self.mouse.assert_not_called()
+        self.assertEqual(self.cursor, (20, 30))
 
     def test_cancel_stops_timer_and_late_callback(self):
         timer = self.menu.actionTimer = Mock()
@@ -169,6 +202,7 @@ class ServerTests(unittest.TestCase):
         callback(*args)
         timer.Stop.assert_called_once()
         self.row.UIAInvokePattern.Invoke.assert_not_called()
+        self.mouse.assert_not_called()
 
 
 if __name__ == "__main__":
