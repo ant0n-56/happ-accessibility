@@ -31,10 +31,16 @@ def belongs_to_control(hit, control):
 def is_covered_setting(obj, hit):
     if qml_type(obj.UIAElement.currentClassName) not in ("Switch", "ComboBox", "TextField", "SpinBox"):
         return False
-    if hit is None or hit.processID != obj.processID or belongs_to_control(hit, obj):
+    if hit is None or hit.processID != obj.processID:
         return False
     parent = obj.parent
     if parent is None or qml_type(parent.UIAElement.currentClassName) != "SettingsPane":
+        return False
+    rect, pane = obj.location, getattr(parent, "location", None)
+    if (rect and pane and rect.width > 0 and rect.height > 0 and pane.width > 0 and pane.height > 0
+            and (rect.top >= pane.top + pane.height or rect.top + rect.height <= pane.top)):
+        return True
+    if belongs_to_control(hit, obj):
         return False
     for depth in range(4):
         if hit is None or hit.processID != obj.processID:
@@ -139,6 +145,8 @@ class SettingReader:
                 bottom = pane.top
                 width, height = min(pane.width, 1200), bottom - top
                 self.headingRect = SimpleNamespace(left=left + width, top=top, height=height)
+                top = max(window.top, container.location.top, pane.top - 2 * rect.height)
+                width, height = min(width, 600), bottom - top
             if not 20 <= width <= 1200 or not 12 <= height <= 1200:
                 return
             if not belongs_to_control(
@@ -149,7 +157,9 @@ class SettingReader:
                 hit = NVDAObject.objectFromPoint(left + offset, sample_y)
                 if hit is None or hit.processID != self.owner.processID:
                     return
-            language = next((value for value in getLanguages() if value.lower().startswith("ru")), None)
+            languages = getLanguages()
+            language = next((value for value in languages if value.lower().startswith("en")), None) if self.headingRect else None
+            language = language or next((value for value in languages if value.lower().startswith("ru")), None)
             if language is None:
                 return
             self.info = RecogImageInfo(left, top, width, height, 2)

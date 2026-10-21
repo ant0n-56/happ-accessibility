@@ -93,12 +93,12 @@ class SettingReaderTests(unittest.TestCase):
         self.obj.next = None
         self.obj.UIAElement.currentName = ""
         self.reader = self.module.SettingReader(self.owner, self.obj)
-        self.result.data = [[dict(text="User agent", x=0, y=20, width=120, height=24)]]
+        self.result.data = [[dict(text="User agent", x=0, y=90, width=120, height=24)]]
 
     def test_full_width_editor_reads_heading_without_capturing_value(self):
         self.heading_reader()
         self.reader.start()
-        self.capture.assert_called_once_with(100, 65, 420, 35)
+        self.capture.assert_called_once_with(100, 30, 420, 70)
         self.reader.finish(self.result)
         self.assertEqual(self.messages, ["Агент пользователя (User agent)"])
         self.assertEqual(self.obj.UIAElement.currentName, "")
@@ -301,4 +301,30 @@ class SettingReaderTests(unittest.TestCase):
 
     def test_nested_control_does_not_hide_itself(self):
         hit = SimpleNamespace(processID=42, parent=self.obj)
+        self.obj.parent.UIAElement = SimpleNamespace(currentClassName="SettingsPane")
         self.assertFalse(self.module.is_covered_setting(self.obj, hit))
+
+    def test_control_outside_parent_is_skipped_even_if_hit_returns_itself(self):
+        self.obj.parent.UIAElement = SimpleNamespace(currentClassName="SettingsPane")
+        self.obj.location = self.obj.location._replace(top=220)
+        self.assertTrue(self.module.is_covered_setting(self.obj, self.obj))
+
+    def test_partially_visible_control_is_not_skipped_as_outside(self):
+        self.obj.parent.UIAElement = SimpleNamespace(currentClassName="SettingsPane")
+        self.obj.location = self.obj.location._replace(top=210)
+        self.assertFalse(self.module.is_covered_setting(self.obj, self.obj))
+
+    def test_english_heading_prefers_installed_english_ocr(self):
+        self.heading_reader()
+        self.module.getLanguages = lambda: ["ru-RU", "en-US"]
+        factory = Mock(return_value=self.recognizer)
+        self.module.UwpOcr = factory
+        self.reader.start()
+        factory.assert_called_once_with("en-US")
+
+    def test_heading_ignores_extra_context_line(self):
+        self.heading_reader()
+        self.reader.start()
+        self.result.data.insert(0, [dict(text="Другой текст", x=0, y=10, width=150, height=20)])
+        self.reader.finish(self.result)
+        self.assertEqual(self.messages, ["Агент пользователя (User agent)"])
