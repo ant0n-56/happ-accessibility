@@ -12,7 +12,7 @@ from contentRecog.uwpOcr import UwpOcr, getLanguages
 from logHandler import log
 from NVDAObjects import NVDAObject
 
-from .groupLabels import match_groups
+from .groupLabels import match_groups, match_settings_back
 from .panel import PanelMenu
 
 
@@ -24,6 +24,7 @@ class SettingsGroups(PanelMenu):
         self.panes = panes
         self.rectangles = [pane.location for pane in panes]
         self.selection = None
+        self.backTarget = None
         self.actionTimer = None
         self.capture()
 
@@ -48,13 +49,14 @@ class SettingsGroups(PanelMenu):
                 return
             view = self.viewportRect
             window = self.foreground.location
+            self.windowRect = window
             if not view or not window or any(not rect for rect in self.rectangles):
                 self.cancel()
                 return
             left = max(view.left, window.left, min(rect.left for rect in self.rectangles))
             right = min(view.left + view.width, window.left + window.width,
                         max(rect.left + min(rect.width // 2, 600) for rect in self.rectangles))
-            top = max(view.top, window.top)
+            top = window.top
             bottom = min(view.top + view.height, window.top + window.height)
             if not (20 <= right - left <= 800 and 20 <= bottom - top <= 1200):
                 self.cancel()
@@ -111,6 +113,19 @@ class SettingsGroups(PanelMenu):
                 ui.message("Не удалось распознать группы настроек")
                 return
             entries = match_groups(result.data, self.info, self.rectangles, self.viewportRect)
+            back = match_settings_back(result.data, self.info, self.viewportRect, self.windowRect)
+            if back and self.selection is None:
+                left, top, right, bottom = back[0][2]
+                candidate = NVDAObject.objectFromPoint((left + right) // 2, (top + bottom) // 2)
+                ancestor = candidate
+                for depth in range(8):
+                    if ancestor is None or ancestor.processID != self.owner.processID:
+                        break
+                    if ancestor == self.foreground:
+                        self.backTarget = candidate
+                        break
+                    ancestor = ancestor.parent
+            entries = back + entries
             entries = [entry for entry in entries if self.hit(entry)]
             if self.selection is not None:
                 matching = [entry for entry in entries if entry[:2] == self.selection[:2]]
@@ -131,7 +146,7 @@ class SettingsGroups(PanelMenu):
                 self.dialog = wx.SingleChoiceDialog(
                     gui.mainFrame,
                     "Выберите заголовок группы. Enter — нажать, Escape — отмена. "
-                    "Показаны только видимые распознанные группы.",
+                    "Показаны видимые группы и доступный возврат к настройкам.",
                     "Группы настроек Happ", [entry[1] for entry in entries],
                 )
                 if self.dialog.ShowModal() == wx.ID_OK:
@@ -155,7 +170,8 @@ class SettingsGroups(PanelMenu):
     def hit(self, entry):
         index, label, bounds = entry
         left, top, right, bottom = bounds
-        return NVDAObject.objectFromPoint((left + right) // 2, (top + bottom) // 2) == self.panes[index]
+        target = self.backTarget if index == -1 else self.panes[index]
+        return target is not None and NVDAObject.objectFromPoint((left + right) // 2, (top + bottom) // 2) == target
 
     def click(self, retries=40):
         self.actionTimer = None
@@ -181,7 +197,8 @@ class SettingsGroups(PanelMenu):
                     mouseHandler.executeMouseEvent(winUser.MOUSEEVENTF_LEFTDOWN, 0, 0)
                 finally:
                     mouseHandler.executeMouseEvent(winUser.MOUSEEVENTF_LEFTUP, 0, 0)
-                ui.message("Нажатие заголовка группы отправлено")
+                ui.message("Нажатие возврата отправлено" if self.selection[0] == -1
+                           else "Нажатие заголовка группы отправлено")
             finally:
                 if tuple(winUser.getCursorPos()) == point:
                     winUser.setCursorPos(*previous)

@@ -53,3 +53,37 @@ class GroupLabelTests(unittest.TestCase):
         words = [[dict(text="интерфейса", x=210, y=200, width=90, height=20),
                   dict(text="Настройки", x=115, y=200, width=90, height=20)]]
         self.assertEqual(self.match(words)[0][1], "Настройки интерфейса")
+
+    def breadcrumb(self):
+        return [[dict(text=text, x=left, y=40, width=width, height=20)
+                 for text, left, width in (("Настройки", 100, 100), (">", 205, 15),
+                                           ("Настройки", 225, 100), ("интерфейса", 330, 110))]]
+
+    def back(self, lines):
+        window = SimpleNamespace(left=0, top=0, width=1000, height=700)
+        return labels.match_settings_back(lines, self.info, self.view, window)
+
+    def test_back_targets_only_root_word(self):
+        self.assertEqual(self.back(self.breadcrumb()), [(-1, "Назад к настройкам", (100, 40, 200, 60))])
+
+    def test_main_page_title_does_not_offer_back(self):
+        self.assertEqual(self.back([self.breadcrumb()[0][:1]]), [])
+
+    def test_unknown_subpage_does_not_offer_back(self):
+        words = self.breadcrumb()
+        words[0][-1]["text"] = "неизвестного"
+        self.assertEqual(self.back(words), [])
+
+    def test_back_outside_header_is_rejected(self):
+        words = self.breadcrumb()
+        for word in words[0]:
+            word["y"] = 100
+        self.assertEqual(self.back(words), [])
+
+    def test_duplicate_breadcrumb_is_rejected(self):
+        self.assertEqual(self.back(self.breadcrumb() * 2), [])
+
+    def test_missing_separator_is_rejected(self):
+        words = self.breadcrumb()
+        words[0][1]["text"] = "и"
+        self.assertEqual(self.back(words), [])

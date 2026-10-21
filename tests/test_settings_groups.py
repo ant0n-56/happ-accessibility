@@ -58,6 +58,11 @@ class SettingsGroupsTests(unittest.TestCase):
         self.menu.rectangles = [self.pane.location]
         self.menu.selection = (0, "Подписки", (30, 40, 100, 60))
         self.menu.actionTimer = None
+        self.menu.backTarget = None
+        self.menu.windowRect = object()
+        self.back_patch = patch.object(self.module, "match_settings_back", return_value=[])
+        self.back_patch.start()
+        self.addCleanup(self.back_patch.stop)
 
     def move(self, *point):
         self.cursor = point
@@ -67,6 +72,17 @@ class SettingsGroupsTests(unittest.TestCase):
         self.assertEqual(self.events, [(2, 0, 0), (4, 0, 0)])
         self.assertEqual(self.cursor, (700, 800))
         self.assertTrue(self.menu.cancelled)
+
+    def test_back_click_requires_recorded_header_target(self):
+        self.menu.selection = (-1, "Назад к настройкам", (30, 40, 100, 60))
+        self.menu.click()
+        self.assertEqual(self.events, [])
+
+    def test_back_click_uses_header_not_last_pane(self):
+        self.menu.selection = (-1, "Назад к настройкам", (30, 40, 100, 60))
+        self.menu.backTarget = self.hit = object()
+        self.menu.click()
+        self.assertEqual(self.events, [(2, 0, 0), (4, 0, 0)])
 
     def test_changed_foreground_blocks_click(self):
         self.foreground = object()
