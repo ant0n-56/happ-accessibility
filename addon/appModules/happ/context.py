@@ -3,6 +3,29 @@
 import re
 
 
+def interface_setting_label(target_rect, controls):
+    if len(controls) != 2 or target_rect is None:
+        return None
+    if any(qml_type(kind) != "ComboBox" or rect is None for kind, name, rect in controls):
+        return None
+    by_name = {name: rect for kind, name, rect in controls}
+    if set(by_name) != {"Русский", "Системная"}:
+        return None
+    language = by_name["Русский"]
+    theme = by_name["Системная"]
+    left, top, width, height = language
+    theme_left, theme_top, theme_width, theme_height = theme
+    if (width <= 0 or height <= 0 or theme_height <= 0
+            or left != theme_left or width != theme_width
+            or not top + height <= theme_top <= top + 3 * height):
+        return None
+    if target_rect == language:
+        return "Язык"
+    if target_rect == theme:
+        return "Тема"
+    return None
+
+
 def qml_type(class_name):
     """Remove runtime-generated Qt suffixes, not arbitrary class-name text."""
     return re.sub(r"_QMLTYPE_\d+(?:_QML_\d+)?$", "", class_name or "")

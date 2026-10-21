@@ -37,7 +37,7 @@ class NavigationTests(unittest.TestCase):
         self.root = Node("Main_QMLTYPE_17", [Node("QQuickControl", [self.button])])
         self.api = types.SimpleNamespace(getForegroundObject=lambda: self.root)
         state = types.SimpleNamespace(UNAVAILABLE=1, INVISIBLE=2, OFFSCREEN=3)
-        role = types.SimpleNamespace(EDITABLETEXT=8, BUTTON=9)
+        role = types.SimpleNamespace(EDITABLETEXT=8, BUTTON=9, COMBOBOX=10)
         modules = {
             "appModuleHandler": types.SimpleNamespace(AppModule=type("Base", (), {"terminate": lambda self: None})),
             "core": types.SimpleNamespace(callLater=self.schedule),

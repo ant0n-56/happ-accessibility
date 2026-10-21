@@ -15,7 +15,34 @@ from scriptHandler import script
 from utils.security import isRunningOnSecureDesktop
 from winAPI.sessionTracking import isLockScreenModeActive
 
-from .context import is_search_menu, is_server_search, qml_type
+from .context import interface_setting_label, is_search_menu, is_server_search, qml_type
+
+
+class InterfaceSettingLabel(UIA):
+    def _get_name(self):
+        native_name = super()._get_name()
+        try:
+            parent = self.parent
+            if not isinstance(parent, UIA) or qml_type(parent.UIAElement.currentClassName) != "SettingsPane":
+                return native_name
+            controls = []
+            child = parent.firstChild
+            for index in range(3):
+                if child is None:
+                    break
+                if not isinstance(child, UIA):
+                    return native_name
+                element = child.UIAElement
+                controls.append((element.currentClassName, element.currentName, child.location))
+                child = child.next
+            if child is not None:
+                return native_name
+            label = interface_setting_label(self.location, controls)
+            if label and native_name:
+                return f"{label}: {native_name}"
+        except (COMError, RuntimeError):
+            log.debugWarning("Happ interface setting context unavailable")
+        return native_name
 
 
 class ContextLabel(UIA):
@@ -177,10 +204,13 @@ class AppModule(appModuleHandler.AppModule):
             ui.message("Не удалось открыть панель навигации Happ")
 
     def chooseNVDAObjectOverlayClasses(self, obj, clsList):
-        if not isinstance(obj, UIA) or obj.role not in (Role.EDITABLETEXT, Role.BUTTON):
+        if not isinstance(obj, UIA) or obj.role not in (Role.EDITABLETEXT, Role.BUTTON, Role.COMBOBOX):
             return
         try:
             kind = qml_type(obj.UIAElement.currentClassName)
+            if kind == "ComboBox" and obj.role == Role.COMBOBOX:
+                clsList.insert(0, InterfaceSettingLabel)
+                return
             if (kind, obj.role) in (("TextField", Role.EDITABLETEXT), ("ImageButton", Role.BUTTON)):
                 clsList.insert(0, ContextLabel)
         except COMError:
