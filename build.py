@@ -7,6 +7,7 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parent
 FILES = (
+    "LICENSE",
     "manifest.ini",
     "appModules/happ/__init__.py",
     "appModules/happ/context.py",
@@ -41,7 +42,7 @@ def build():
     with tempfile.TemporaryDirectory(prefix="happ-build-") as temporary:
         staging = Path(temporary)
         for relative in FILES:
-            source = ROOT / "addon" / relative
+            source = ROOT / relative if relative == "LICENSE" else ROOT / "addon" / relative
             if source.is_symlink() or not source.is_file():
                 raise ValueError(f"Invalid source: {relative}")
             destination = staging / relative
@@ -54,7 +55,8 @@ def build():
         if archive.namelist() != list(FILES) or archive.testzip() is not None:
             raise ValueError("Package verification failed")
         for relative in FILES:
-            if archive.read(relative) != (ROOT / "addon" / relative).read_bytes():
+            source = ROOT / relative if relative == "LICENSE" else ROOT / "addon" / relative
+            if archive.read(relative) != source.read_bytes():
                 raise ValueError(f"Package content mismatch: {relative}")
     print(output)
     print(f"Verified {len(FILES)} files")
