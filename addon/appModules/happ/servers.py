@@ -67,6 +67,7 @@ def find_rows(foreground):
 
 
 class ServerMenu(PanelMenu):
+    actionMessage = "Нажатие строки сервера отправлено. Проверьте результат в Happ"
     def start(self, foreground):
         self.foreground = foreground
         self.selection = None
@@ -239,7 +240,7 @@ class ServerMenu(PanelMenu):
                     mouseHandler.executeMouseEvent(winUser.MOUSEEVENTF_LEFTDOWN, 0, 0)
                 finally:
                     mouseHandler.executeMouseEvent(winUser.MOUSEEVENTF_LEFTUP, 0, 0)
-                ui.message("Нажатие строки сервера отправлено. Проверьте результат в Happ")
+                ui.message(self.actionMessage)
             finally:
                 if tuple(winUser.getCursorPos()) == point:
                     winUser.setCursorPos(*previous)

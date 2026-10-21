@@ -423,6 +423,15 @@ class AppModule(appModuleHandler.AppModule):
 
     @script(description="Выбрать видимый сервер Happ из распознанного списка", category="Happ")
     def script_servers(self, gesture):
+        from .servers import ServerMenu
+        self._openServerMenu(ServerMenu)
+
+    @script(description="Открыть действия подписки, на кнопке которой находится фокус", category="Happ")
+    def script_subscriptionActions(self, gesture):
+        from .subscriptionActions import SubscriptionActions
+        self._openServerMenu(SubscriptionActions)
+
+    def _openServerMenu(self, menuClass):
         for attribute in ("_serverMenu", "_groupsMenu", "_panelMenu"):
             menu = getattr(self, attribute, None)
             if menu is not None:
@@ -439,12 +448,11 @@ class AppModule(appModuleHandler.AppModule):
                     or qml_type(foreground.UIAElement.currentClassName) != "Main"):
                 ui.message("Сначала закройте диалог Happ")
                 return
-            from .servers import ServerMenu
-            self._serverMenu = ServerMenu(self)
+            self._serverMenu = menuClass(self)
             self._serverMenu.start(foreground)
         except (COMError, RuntimeError):
-            log.debugWarning("Happ server structure unavailable")
-            ui.message("Не удалось получить список серверов")
+            log.debugWarning("Happ server menu structure unavailable")
+            ui.message("Не удалось открыть меню Happ")
 
     def chooseNVDAObjectOverlayClasses(self, obj, clsList):
         if not isinstance(obj, UIA):
