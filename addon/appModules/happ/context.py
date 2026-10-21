@@ -3,6 +3,29 @@
 import re
 
 
+def setting_row_label(lines, width, height):
+    if width <= 0 or height <= 0:
+        return None
+    candidates = []
+    for line in lines:
+        if not line:
+            continue
+        words = sorted(line, key=lambda word: word["x"])
+        if any(word["width"] <= 0 or word["height"] <= 0
+               or word["x"] < 0 or word["x"] + word["width"] > width
+               or word["y"] < 0 or word["y"] + word["height"] > height
+               or abs(word["y"] + word["height"] / 2 - height / 2) > height / 4
+               for word in words):
+            return None
+        text = " ".join(word["text"].strip() for word in words).strip().rstrip(":")
+        if not text or len(text) > 100 or not any(character.isalpha() for character in text):
+            return None
+        if any(ord(character) < 32 for character in text):
+            return None
+        candidates.append(text)
+    return candidates[0] if len(candidates) == 1 else None
+
+
 def interface_setting_label(target_rect, controls):
     if len(controls) != 2 or target_rect is None:
         return None

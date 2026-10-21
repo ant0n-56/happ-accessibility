@@ -18,7 +18,17 @@ from winAPI.sessionTracking import isLockScreenModeActive
 from .context import interface_setting_label, is_search_menu, is_server_search, qml_type
 
 
-class InterfaceSettingLabel(UIA):
+class SettingsRowLabel(UIA):
+    def _get_name(self):
+        native_name = super()._get_name()
+        saved = getattr(self, "_happRowLabel", None)
+        if (saved and not isRunningOnSecureDesktop() and not isLockScreenModeActive()
+                and api.getFocusObject() == self and self.location == saved[1]):
+            return f"{saved[0]}: {native_name}" if native_name else saved[0]
+        return native_name
+
+
+class InterfaceSettingLabel(SettingsRowLabel):
     def _get_name(self):
         native_name = super()._get_name()
         try:
@@ -81,18 +91,44 @@ class ContextLabel(UIA):
 
 
 class AppModule(appModuleHandler.AppModule):
+    _settingReader = None
     _clickTimer = None
     _terminated = False
     _panelMenu = None
 
     def terminate(self):
         self._terminated = True
+        if self._settingReader is not None:
+            self._settingReader.cancel()
         if self._panelMenu is not None:
             self._panelMenu.cancel()
         if self._clickTimer is not None:
             self._clickTimer.Stop()
             self._clickTimer = None
         super().terminate()
+
+    def event_gainFocus(self, obj, nextHandler):
+        if self._settingReader is not None:
+            self._settingReader.cancel()
+            self._settingReader = None
+        if isinstance(obj, SettingsRowLabel):
+            obj._happRowLabel = None
+        nextHandler()
+        if self._terminated or isRunningOnSecureDesktop() or isLockScreenModeActive():
+            return
+        try:
+            if not isinstance(obj, SettingsRowLabel) or obj.processID != self.processID:
+                return
+            parent = obj.parent
+            if not isinstance(parent, UIA) or qml_type(parent.UIAElement.currentClassName) != "SettingsPane":
+                return
+            if obj.name != obj.UIAElement.currentName:
+                return
+            from .settings import SettingReader
+            self._settingReader = SettingReader(self, obj)
+            self._settingReader.timer = core.callLater(250, self._settingReader.start)
+        except (COMError, RuntimeError):
+            log.debugWarning("Happ focused setting unavailable")
 
     def _clickNavigation(self, button, foreground, retries=40):
         self._clickTimer = None
@@ -204,10 +240,13 @@ class AppModule(appModuleHandler.AppModule):
             ui.message("Не удалось открыть панель навигации Happ")
 
     def chooseNVDAObjectOverlayClasses(self, obj, clsList):
-        if not isinstance(obj, UIA) or obj.role not in (Role.EDITABLETEXT, Role.BUTTON, Role.COMBOBOX):
+        if not isinstance(obj, UIA):
             return
         try:
             kind = qml_type(obj.UIAElement.currentClassName)
+            if kind == "Switch":
+                clsList.insert(0, SettingsRowLabel)
+                return
             if kind == "ComboBox" and obj.role == Role.COMBOBOX:
                 clsList.insert(0, InterfaceSettingLabel)
                 return
