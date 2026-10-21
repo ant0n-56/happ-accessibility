@@ -56,9 +56,12 @@ class ContextLabel(UIA):
 class AppModule(appModuleHandler.AppModule):
     _clickTimer = None
     _terminated = False
+    _panelMenu = None
 
     def terminate(self):
         self._terminated = True
+        if self._panelMenu is not None:
+            self._panelMenu.cancel()
         if self._clickTimer is not None:
             self._clickTimer.Stop()
             self._clickTimer = None
@@ -110,11 +113,14 @@ class AppModule(appModuleHandler.AppModule):
             ui.message("Не удалось нажать кнопку панели")
 
     @script(
-        description="Раскрыть боковую панель навигации Happ",
+        description="Раскрыть панель или выбрать распознанный раздел Happ",
         category="Happ",
         gesture="kb:NVDA+alt+n",
     )
     def script_navigation(self, gesture):
+        if self._panelMenu is not None:
+            self._panelMenu.cancel()
+            self._panelMenu = None
         if self._clickTimer is not None:
             self._clickTimer.Stop()
             self._clickTimer = None
@@ -150,6 +156,11 @@ class AppModule(appModuleHandler.AppModule):
                     else:
                         ui.message("Не удалось однозначно найти панель навигации")
                         return
+            if not pending and len(buttons) == 6:
+                from .panel import PanelMenu
+                self._panelMenu = PanelMenu(self)
+                self._panelMenu.start(foreground, buttons)
+                return
             if pending or len(buttons) != 1:
                 ui.message("Не удалось однозначно найти панель навигации")
                 return
