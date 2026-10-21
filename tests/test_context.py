@@ -59,6 +59,30 @@ class SearchContextTests(unittest.TestCase):
         self.assertFalse(context.is_search_menu(target, controls[:-2] + controls[-1:]))
         self.assertFalse(context.is_search_menu((636, 200, 20, 20), controls))
 
+    def test_ping_toolbar_label_survives_scale_and_reordering(self):
+        for scale, offset in [(1, 0), (1.5, -700), (2, 500)]:
+            controls = self.menu_controls(scale, offset)
+            self.assertEqual(context.search_toolbar_label(controls[-2][2], list(reversed(controls))),
+                             "Пинг списка серверов")
+            self.assertEqual(context.search_toolbar_label(controls[-1][2], controls), "Меню списка серверов")
+
+    def test_subscription_link_observed_layout(self):
+        for scale, offset in [(1, 0), (2, -500)]:
+            transform = lambda rect: tuple(value * scale + (offset if index < 2 else 0) for index, value in enumerate(rect))
+            parent = transform((188, 195, 822, 45))
+            target = transform((966, 197, 32, 18))
+            controls = [("ImageButton_QMLTYPE_12", "", target),
+                        ("ProgressBar_QMLTYPE_13", "", transform((200, 198, 653, 16)))]
+            self.assertTrue(context.is_subscription_link(target, parent, controls))
+            self.assertFalse(context.is_subscription_link(target, parent, controls * 2))
+            self.assertFalse(context.is_subscription_link(target, parent, controls[:1]))
+
+    def test_subscription_link_outside_row_is_rejected(self):
+        parent = (188, 195, 822, 45)
+        target = (966, 250, 32, 18)
+        controls = [("ImageButton", "", target), ("ProgressBar", "", (200, 198, 653, 16))]
+        self.assertFalse(context.is_subscription_link(target, parent, controls))
+
 
 if __name__ == "__main__":
     unittest.main()

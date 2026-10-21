@@ -73,6 +73,10 @@ def is_server_search(classes_and_names):
 
 
 def is_search_menu(target_rect, controls):
+    return search_toolbar_label(target_rect, controls) == "Меню списка серверов"
+
+
+def search_toolbar_label(target_rect, controls):
     """Identify the observed menu beside search without absolute coordinates.
 
     Qt gives both toolbar icons the same ID. Accept only the verified layout:
@@ -80,13 +84,13 @@ def is_search_menu(target_rect, controls):
     Each record is (class name, native name, (left, top, width, height)).
     """
     if not is_server_search([(cls, name) for cls, name, _ in controls]):
-        return False
+        return None
     search = next(rect for cls, _, rect in controls if qml_type(cls) == "TextField")
     if search is None or target_rect is None:
-        return False
+        return None
     left, top, width, height = search
     if width <= 0 or height <= 0:
-        return False
+        return None
     icons = []
     for cls, name, rect in controls:
         if qml_type(cls) != "ImageButton" or name or rect is None:
@@ -97,6 +101,31 @@ def is_search_menu(target_rect, controls):
                 and top <= y and y + h <= top + height):
             icons.append(rect)
     if len(icons) != 2 or icons[0][0] == icons[1][0]:
-        return False
+        return None
     first, last = sorted(icons, key=lambda rect: rect[0])
-    return first[0] + first[2] <= last[0] and target_rect == last
+    if first[0] + first[2] > last[0]:
+        return None
+    if target_rect == last:
+        return "Меню списка серверов"
+    if target_rect == first:
+        return "Пинг списка серверов"
+    return None
+
+
+def is_subscription_link(target_rect, parent_rect, controls):
+    if target_rect is None or parent_rect is None or len(controls) != 2:
+        return False
+    icons = [rect for kind, name, rect in controls if qml_type(kind) == "ImageButton" and not name]
+    bars = [rect for kind, name, rect in controls if qml_type(kind) == "ProgressBar"]
+    if icons != [target_rect] or len(bars) != 1 or bars[0] is None:
+        return False
+    left, top, width, height = target_rect
+    parent_left, parent_top, parent_width, parent_height = parent_rect
+    bar_left, bar_top, bar_width, bar_height = bars[0]
+    return (0 < width <= parent_height and 0 < height <= parent_height
+            and 0 < bar_width and 0 < bar_height <= parent_height
+            and parent_left <= bar_left < bar_left + bar_width <= left
+            and left + width <= parent_left + parent_width
+            and left >= parent_left + parent_width * 0.85
+            and parent_top <= top <= bar_top + bar_height / 2 <= top + height <= parent_top + parent_height
+            and parent_top <= bar_top < bar_top + bar_height <= parent_top + parent_height)
