@@ -3,6 +3,10 @@
 import appModuleHandler
 import api
 import ui
+import core
+import mouseHandler
+import winUser
+from NVDAObjects import NVDAObject
 from comtypes import COMError
 from controlTypes import Role, State
 from logHandler import log
@@ -50,12 +54,70 @@ class ContextLabel(UIA):
 
 
 class AppModule(appModuleHandler.AppModule):
+    _clickTimer = None
+    _terminated = False
+
+    def terminate(self):
+        self._terminated = True
+        if self._clickTimer is not None:
+            self._clickTimer.Stop()
+            self._clickTimer = None
+        super().terminate()
+
+    def _clickNavigation(self, button, foreground, retries=40):
+        self._clickTimer = None
+        try:
+            if (self._terminated or isRunningOnSecureDesktop() or isLockScreenModeActive()
+                    or api.getForegroundObject() != foreground):
+                return
+            held = any(winUser.getAsyncKeyState(key) & 0x8000
+                       for key in range(1, 256))
+            if held:
+                if retries:
+                    self._clickTimer = core.callLater(50, self._clickNavigation, button, foreground, retries - 1)
+                else:
+                    ui.message("Отпустите клавиши и повторите команду")
+                return
+            rect = button.location
+            if not rect or rect.width <= 0 or rect.height <= 0:
+                ui.message("Не удалось определить границы кнопки панели")
+                return
+            point = (rect.left + rect.width // 2, rect.top + rect.height // 2)
+            if (button.processID != self.processID
+                    or qml_type(button.UIAElement.currentClassName) != "NavButton"
+                    or button.states & {State.UNAVAILABLE, State.INVISIBLE, State.OFFSCREEN}
+                    or NVDAObject.objectFromPoint(*point) != button):
+                ui.message("Кнопка панели перекрыта или недоступна")
+                return
+            previous = winUser.getCursorPos()
+            try:
+                winUser.setCursorPos(*point)
+                if (tuple(winUser.getCursorPos()) != point
+                        or isRunningOnSecureDesktop() or isLockScreenModeActive()
+                        or api.getForegroundObject() != foreground
+                        or NVDAObject.objectFromPoint(*point) != button):
+                    return
+                try:
+                    mouseHandler.executeMouseEvent(winUser.MOUSEEVENTF_LEFTDOWN, 0, 0)
+                finally:
+                    mouseHandler.executeMouseEvent(winUser.MOUSEEVENTF_LEFTUP, 0, 0)
+                ui.message("Щелчок по кнопке панели отправлен")
+            finally:
+                if tuple(winUser.getCursorPos()) == point:
+                    winUser.setCursorPos(*previous)
+        except (COMError, RuntimeError, OSError):
+            log.debugWarning("Happ navigation click failed", exc_info=True)
+            ui.message("Не удалось нажать кнопку панели")
+
     @script(
         description="Открыть или свернуть боковую панель навигации Happ",
         category="Happ",
         gesture="kb:NVDA+alt+n",
     )
     def script_navigation(self, gesture):
+        if self._clickTimer is not None:
+            self._clickTimer.Stop()
+            self._clickTimer = None
         if isRunningOnSecureDesktop() or isLockScreenModeActive():
             return
         try:
@@ -95,15 +157,10 @@ class AppModule(appModuleHandler.AppModule):
             if button.states & {State.UNAVAILABLE, State.INVISIBLE, State.OFFSCREEN}:
                 ui.message("Панель навигации Happ недоступна")
                 return
-            # Use only the provider's native action; never fall back to a click.
-            pattern = button.UIAInvokePattern
-            if not pattern:
-                ui.message("Happ не предоставляет действие для панели навигации")
-                return
             if (isRunningOnSecureDesktop() or isLockScreenModeActive()
                     or api.getForegroundObject() != foreground):
                 return
-            pattern.Invoke()
+            self._clickTimer = core.callLater(50, self._clickNavigation, button, foreground)
         except (COMError, RuntimeError):
             log.debugWarning("Happ navigation provider became unavailable")
             ui.message("Не удалось открыть панель навигации Happ")
