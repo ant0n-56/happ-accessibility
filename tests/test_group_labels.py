@@ -87,3 +87,23 @@ class GroupLabelTests(unittest.TestCase):
         words = self.breadcrumb()
         words[0][1]["text"] = "и"
         self.assertEqual(self.back(words), [])
+
+    def test_ping_breadcrumb_split_by_ocr_color(self):
+        words = self.breadcrumb()[0][:2]
+        suffix = dict(text="Пинг", x=225, y=42, width=55, height=16)
+        self.assertEqual(self.back([words, [suffix]]),
+                         [(-1, "Назад к настройкам", (100, 40, 200, 60))])
+
+    def test_three_breadcrumb_fragments_are_joined(self):
+        words = self.breadcrumb()[0]
+        self.assertEqual(self.back([[words[0]], [words[1]], words[2:]]), self.back([words]))
+
+    def test_separate_heading_is_not_joined_to_breadcrumb(self):
+        words = self.breadcrumb()[0][:2]
+        suffix = dict(text="Пинг", x=225, y=65, width=55, height=12)
+        self.assertEqual(self.back([words, [suffix]]), [])
+
+    def test_distant_suffix_is_not_joined(self):
+        words = self.breadcrumb()[0][:2]
+        suffix = dict(text="Пинг", x=500, y=40, width=55, height=20)
+        self.assertEqual(self.back([words, [suffix]]), [])

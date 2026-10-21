@@ -6,7 +6,30 @@ GROUP_LABELS = {label.casefold(): label for label in (
 
 def match_settings_back(lines, info, viewport, window):
     matches = []
-    for line in lines:
+    header_lines = []
+    for line in sorted((line for line in lines if line), key=lambda line: min(word["x"] for word in line)):
+        if any(word["width"] <= 0 or word["height"] <= 0 for word in line):
+            continue
+        top = min(word["y"] for word in line)
+        bottom = max(word["y"] + word["height"] for word in line)
+        if (info.convertYToScreen(top) < window.top
+                or info.convertYToScreen(bottom) > viewport.top):
+            continue
+        left = min(word["x"] for word in line)
+        candidates = []
+        for previous in header_lines:
+            previous_top = min(word["y"] for word in previous)
+            previous_bottom = max(word["y"] + word["height"] for word in previous)
+            previous_right = max(word["x"] + word["width"] for word in previous)
+            height = min(bottom - top, previous_bottom - previous_top)
+            if (0 <= left - previous_right <= 2 * height
+                    and abs((top + bottom) - (previous_top + previous_bottom)) <= height):
+                candidates.append(previous)
+        if len(candidates) == 1:
+            candidates[0].extend(line)
+        else:
+            header_lines.append(list(line))
+    for line in header_lines:
         words = sorted(line, key=lambda word: word["x"])
         if len(words) < 3 or words[0]["text"].strip().casefold() != "настройки":
             continue
