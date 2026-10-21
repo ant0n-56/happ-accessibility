@@ -135,6 +135,13 @@ class AppModule(appModuleHandler.AppModule):
             if not isinstance(parent, UIA):
                 return
             parent_kind = qml_type(parent.UIAElement.currentClassName)
+            popup = parent if parent_kind == "QQuickPopupItem" else parent.parent if parent_kind == "StackView" else None
+            if (isinstance(popup, UIA) and qml_type(popup.UIAElement.currentClassName) == "QQuickPopupItem"
+                    and qml_type(obj.UIAElement.currentClassName) in ("TextField", "ComboBox", "Switch", "ImageButton")):
+                from .dialog import DialogReader
+                self._settingReader = DialogReader(self, obj, popup)
+                self._settingReader.timer = core.callLater(250, self._settingReader.start)
+                return
             menu = (parent_kind == "StackView"
                     and qml_type(obj.UIAElement.currentClassName) == "ImageButton")
             if parent_kind != "SettingsPane" and not menu:
