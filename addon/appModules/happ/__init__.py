@@ -123,6 +123,7 @@ class ContextLabel(SettingsRowLabel):
 
 
 class AppModule(appModuleHandler.AppModule):
+    _serverMenu = None
     _settingsTab = None
     _tabTimer = None
     _groupsMenu = None
@@ -133,6 +134,8 @@ class AppModule(appModuleHandler.AppModule):
 
     def terminate(self):
         self._terminated = True
+        if self._serverMenu is not None:
+            self._serverMenu.cancel()
         self._settingsTab = None
         if self._tabTimer is not None:
             self._tabTimer.Stop()
@@ -297,6 +300,9 @@ class AppModule(appModuleHandler.AppModule):
         gesture="kb:NVDA+alt+n",
     )
     def script_navigation(self, gesture):
+        if self._serverMenu is not None:
+            self._serverMenu.cancel()
+            self._serverMenu = None
         if self._groupsMenu is not None:
             self._groupsMenu.cancel()
             self._groupsMenu = None
@@ -360,6 +366,9 @@ class AppModule(appModuleHandler.AppModule):
 
     @script(description="Выбрать видимый заголовок группы настроек Happ", category="Happ")
     def script_settingsGroups(self, gesture):
+        if self._serverMenu is not None:
+            self._serverMenu.cancel()
+            self._serverMenu = None
         if self._groupsMenu is not None:
             self._groupsMenu.cancel()
             self._groupsMenu = None
@@ -411,6 +420,31 @@ class AppModule(appModuleHandler.AppModule):
         except (COMError, RuntimeError):
             log.debugWarning("Happ settings structure unavailable", exc_info=True)
             ui.message("Не удалось прочитать структуру настроек")
+
+    @script(description="Выбрать видимый сервер Happ из распознанного списка", category="Happ")
+    def script_servers(self, gesture):
+        for attribute in ("_serverMenu", "_groupsMenu", "_panelMenu"):
+            menu = getattr(self, attribute, None)
+            if menu is not None:
+                menu.cancel()
+                setattr(self, attribute, None)
+        if self._clickTimer is not None:
+            self._clickTimer.Stop()
+            self._clickTimer = None
+        if self._terminated or isRunningOnSecureDesktop() or isLockScreenModeActive():
+            return
+        try:
+            foreground = api.getForegroundObject()
+            if (not isinstance(foreground, UIA) or foreground.processID != self.processID
+                    or qml_type(foreground.UIAElement.currentClassName) != "Main"):
+                ui.message("Сначала закройте диалог Happ")
+                return
+            from .servers import ServerMenu
+            self._serverMenu = ServerMenu(self)
+            self._serverMenu.start(foreground)
+        except (COMError, RuntimeError):
+            log.debugWarning("Happ server structure unavailable")
+            ui.message("Не удалось получить список серверов")
 
     def chooseNVDAObjectOverlayClasses(self, obj, clsList):
         if not isinstance(obj, UIA):
