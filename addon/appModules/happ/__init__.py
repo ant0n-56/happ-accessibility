@@ -110,7 +110,7 @@ class AppModule(appModuleHandler.AppModule):
             ui.message("Не удалось нажать кнопку панели")
 
     @script(
-        description="Открыть или свернуть боковую панель навигации Happ",
+        description="Раскрыть боковую панель навигации Happ",
         category="Happ",
         gesture="kb:NVDA+alt+n",
     )
