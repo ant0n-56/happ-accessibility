@@ -4,6 +4,11 @@
 
 Автор: Anton Chigarev. Лицензия: MIT.
 
+## Каналы автора
+
+- [Душная ломастерская](https://t.me/lommast)
+- [Супер медведь (Решения вайб кодера)](https://t.me/Bear_)
+
 ## Скачать и установить
 
 [Скачать дополнение 0.1.1](https://github.com/ant0n-56/happ-accessibility/releases/download/v0.1.1/happAccessibility-0.1.1.nvda-addon).
